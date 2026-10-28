@@ -26,7 +26,9 @@ def build(
     """Assemble the JSON report."""
     ev = alert["event"]
     done = [a for a in actions if a["status"] in ("done", "planned")]
-    rotated = next((a["detail"].get("rotated", []) for a in done if a["kind"] == "rotate_secrets"), [])
+    rotated: list[str] = next(
+        (a["detail"].get("rotated", []) for a in done if a["kind"] == "rotate_secrets"), []
+    )
     switched = any(a["kind"] == "switch_profile" for a in done)
     return {
         "incident_id": incident_id,
@@ -38,8 +40,12 @@ def build(
         "params_id": ev["params_id"],
         "key_id": ev["key_id"],
         "epoch": ev["epoch"],
-        "trigger": {"stream_id": ev["stream_id"], "token_id": ev["token_id"],
-                    "src_ip": ev["src_ip"], "ts": ev["ts"]},
+        "trigger": {
+            "stream_id": ev["stream_id"],
+            "token_id": ev["token_id"],
+            "src_ip": ev["src_ip"],
+            "ts": ev["ts"],
+        },
         "window": {"start": _iso(exposure["window_start"]), "end": _iso(exposure["window_end"])},
         "exposed_streams": {
             "key_level": exposure["key_level"],
@@ -59,10 +65,15 @@ def build(
         ],
         "neutralised": [
             f"{len(rotated)} exposed secret(s) "
-            + ("would be" if dry_run else "were") + " revoked and replaced.",
-            ("Future traffic on the broken profile "
-             + ("would be" if dry_run else "is") + " refused (profile switch, key revoked).")
-            if switched else "No profile switch was executed automatically.",
+            + ("would be" if dry_run else "were")
+            + " revoked and replaced.",
+            (
+                "Future traffic on the broken profile "
+                + ("would be" if dry_run else "is")
+                + " refused (profile switch, key revoked)."
+            )
+            if switched
+            else "No profile switch was executed automatically.",
         ],
     }
 
@@ -72,9 +83,11 @@ def to_markdown(r: dict[str, Any]) -> str:
     lines = [
         f"# Incident {r['incident_id']}",
         "",
-        f"- Created: {r['created_at']}" + ("  **(DRY-RUN: nothing was changed)**" if r["dry_run"] else ""),
+        f"- Created: {r['created_at']}"
+        + ("  **(DRY-RUN: nothing was changed)**" if r["dry_run"] else ""),
         f"- Classification: {r['classification']}",
-        f"- Profile / params / key: {r['profile']} / {r['params_id']} / {r['key_id']} (epoch {r['epoch']})",
+        f"- Profile / params / key: {r['profile']} / {r['params_id']} / {r['key_id']} "
+        f"(epoch {r['epoch']})",
         f"- Trigger: stream {r['trigger']['stream_id']}, token_id {r['trigger']['token_id']}, "
         f"from {r['trigger']['src_ip']} at {r['trigger']['ts']}",
         f"- Exposure window: {r['window']['start']} -> {r['window']['end']}",

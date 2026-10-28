@@ -80,8 +80,14 @@ class ResponseState:
         return d
 
     def record_action(
-        self, idem_key: str, incident_id: str, kind: str, mode: str, status: str,
-        detail: dict[str, Any], now: float,
+        self,
+        idem_key: str,
+        incident_id: str,
+        kind: str,
+        mode: str,
+        status: str,
+        detail: dict[str, Any],
+        now: float,
     ) -> bool:
         """Insert or update an action; returns False if already completed (idempotency)."""
         with self._conn() as c:
@@ -90,7 +96,15 @@ class ResponseState:
                 return False
             c.execute(
                 "INSERT OR REPLACE INTO actions VALUES (?,?,?,?,?,?,?)",
-                (idem_key, incident_id, kind, mode, status, json.dumps(detail, sort_keys=True), now),
+                (
+                    idem_key,
+                    incident_id,
+                    kind,
+                    mode,
+                    status,
+                    json.dumps(detail, sort_keys=True),
+                    now,
+                ),
             )
             return True
 
@@ -105,7 +119,9 @@ class ResponseState:
     def rate_check(self, scope: str, now: float, window_s: float, incident_id: str) -> str | None:
         """If scope ran within window_s, return the incident that covered it; else claim it."""
         with self._conn() as c:
-            r = c.execute("SELECT last_ts, incident_id FROM rate WHERE scope=?", (scope,)).fetchone()
+            r = c.execute(
+                "SELECT last_ts, incident_id FROM rate WHERE scope=?", (scope,)
+            ).fetchone()
             if r is not None and now - r["last_ts"] < window_s:
                 return str(r["incident_id"])
             c.execute("INSERT OR REPLACE INTO rate VALUES (?,?,?)", (scope, now, incident_id))

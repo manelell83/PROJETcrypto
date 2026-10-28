@@ -54,15 +54,16 @@ def classify(ctx: Context) -> dict[str, Any]:
 
 
 def switch_profile(ctx: Context) -> dict[str, Any]:
-    """Remove the broken profile (and weaker ones) from the allow-list, revoke the key, bump epochs."""
+    """Disable the broken profile and weaker ones, revoke the key and bump their epochs."""
     pol = labpolicy.load(ctx.policy_path)
     disable = profiles_to_disable(ctx.profile)
     new_allowed = [p for p in pol.allowed_profiles if p not in disable]
-    changed = (
-        new_allowed != pol.allowed_profiles or ctx.key_id not in pol.revoked_key_ids
-    )
-    detail: dict[str, Any] = {"disable": disable, "allowed_after": new_allowed,
-                              "revoke_key_id": ctx.key_id}
+    changed = new_allowed != pol.allowed_profiles or ctx.key_id not in pol.revoked_key_ids
+    detail: dict[str, Any] = {
+        "disable": disable,
+        "allowed_after": new_allowed,
+        "revoke_key_id": ctx.key_id,
+    }
     if not changed:
         return {**detail, "noop": True}
     if not ctx.dry_run:
@@ -82,8 +83,15 @@ def rotate_secrets(ctx: Context) -> dict[str, Any]:
             rotated.append(s.secret_id)
             continue
         new = SecretRow(
-            str(uuid.uuid4()), s.stream_id, s.service, s.kind, s.sensitivity,
-            ctx.now, s.expires_at, "active", None,
+            str(uuid.uuid4()),
+            s.stream_id,
+            s.service,
+            s.kind,
+            s.sensitivity,
+            ctx.now,
+            s.expires_at,
+            "active",
+            None,
         )
         if ctx.store.rotate_secret(s.secret_id, new, _new_secret_value(s.kind)):
             rotated.append(s.secret_id)
@@ -97,8 +105,12 @@ def rotate_secrets(ctx: Context) -> dict[str, Any]:
 
 def notify_analyst(ctx: Context) -> dict[str, Any]:
     """Append a notification line for the analyst queue (lab stand-in for e-mail/chat)."""
-    line = {"ts": ctx.now, "incident_id": ctx.incident_id, "profile": ctx.profile,
-            "message": "toy-profile break detected; automatic containment applied"}
+    line = {
+        "ts": ctx.now,
+        "incident_id": ctx.incident_id,
+        "profile": ctx.profile,
+        "message": "toy-profile break detected; automatic containment applied",
+    }
     if not ctx.dry_run:
         ctx.notify_path.parent.mkdir(parents=True, exist_ok=True)
         with ctx.notify_path.open("a", encoding="utf-8") as fh:
@@ -149,6 +161,12 @@ ACTIONS = {
 def run(kind: str, ctx: Context) -> dict[str, Any]:
     """Execute one action and log it (without secrets)."""
     detail = ACTIONS[kind](ctx)
-    log_event(_log, "action", incident_id=ctx.incident_id, action=kind, dry_run=ctx.dry_run,
-              noop=bool(detail.get("noop")))
+    log_event(
+        _log,
+        "action",
+        incident_id=ctx.incident_id,
+        action=kind,
+        dry_run=ctx.dry_run,
+        noop=bool(detail.get("noop")),
+    )
     return detail

@@ -21,7 +21,7 @@ from canary_qday.common.store import Store
 SERVICES = ("billing", "hr", "crm", "files")
 
 
-class Request_(BaseModel):
+class BackendRequest(BaseModel):
     """Request forwarded by the proxy."""
 
     service: str = Field(max_length=32)
@@ -29,7 +29,7 @@ class Request_(BaseModel):
     credential: str = Field(max_length=128)
 
 
-def handle(store: Store, policy_file: Path, req: Request_) -> dict[str, Any]:
+def handle(store: Store, policy_file: Path, req: BackendRequest) -> dict[str, Any]:
     """Pure handler, shared by the HTTP app and the proxy's in-process mode."""
     if req.service not in SERVICES:
         return {"status": 404, "error": "unknown service"}
@@ -46,7 +46,7 @@ def create_app(store: Store, policy_file: Path) -> FastAPI:
     app = FastAPI(title="backend-stub")
 
     @app.post("/api")
-    async def api(req: Request_) -> dict[str, Any]:
+    async def api(req: BackendRequest) -> dict[str, Any]:
         return handle(store, policy_file, req)
 
     return app

@@ -5,7 +5,11 @@ The project owner delegated the OPEN items of the spec (§2) on 2026-10-28 ("dec
 ## OPEN 1 — SIEM
 
 - **Decision:** every event goes through the `SiemSink` interface (`siem/base.py`). Two sinks are implemented: a file sink and a Splunk HEC sink (`siem/splunk_hec.py`, buffering events on disk when the SIEM is down). CI and the demo use a **mock SIEM** (`siem/mock_hec.py`), which offers an HEC-compatible endpoint, one correlation rule and a signed webhook.
-- **Status:** the mock path is tested end to end by the scenario. The Splunk HEC sink and the `siem/splunk/*` configuration are **not tested against a real Splunk instance**.
+- **Status:**
+  - the mock path is tested end to end by the scenario and by unit tests;
+  - the Splunk HEC sink is unit-tested only against an unreachable endpoint (buffering, no token in logs);
+  - `siem/splunk/*` is **not tested against a real Splunk instance**;
+  - known gap: the native Splunk webhook payload is not the `Alert` schema, and the adapter is not implemented (`siem/splunk/README.md`).
 
 ## OPEN 2 — webhook authentication
 
@@ -14,15 +18,14 @@ The project owner delegated the OPEN items of the spec (§2) on 2026-10-28 ("dec
   - `HmacHeader` (HMAC-SHA256 over timestamp and body, ±120 s window, signature replay cache) for the mock SIEM, and for any sender that can set headers, such as a Splunk custom alert action.
   - `SharedSecretPath` (secret in the URL path, constant-time comparison, freshness from the alert timestamp) for the native Splunk webhook. It must be combined with network isolation and the Splunk webhook allow-list.
   - Both modes reject a duplicate `alert_id` (`E_REPLAY`).
-- **Status:** `HmacHeader` is exercised by the scenario: a forged alert gets 401, a replayed alert gets 409. `SharedSecretPath` is implemented but not exercised.
+- **Status:** both modes are unit-tested (`tests/security/test_webhook.py`). `HmacHeader` is also exercised end to end by the scenario: a forged alert gets 401, a replayed alert gets 409.
 
 ## OPEN 3 — toy parameters (PROVISIONAL)
 
 - **Current choice:** RED = `toy-n64-k1` and ORANGE = `toy-n64-k2`. Both use q = 3329, η1 = η2 = 2, du = 10, dv = 4. The ring degree n ≥ 64 keeps the K-PKE message at ≥ 64 bits, so brute-forcing the message is not a shortcut.
-- **Evidence so far:** a smoke run of 200 encapsulations per candidate gave 0 decryption failures for the four du=10/dv=4 candidates. The `du4dv2` variants failed 200/200 and are kept as negative controls. This is a smoke check, not the E4 measurement.
+- **Evidence:** E4 measured the decryption-failure rate with deterministic seeds; see `docs/calibration.md` for the runs and their bounds. The `du4dv2` variants fail on every trial and are kept as negative controls.
 - **Missing:**
-  - the E4 DFR experiment at scale;
-  - the lattice-estimator run (the SageMath image was pulled, but no estimator run was made);
+  - the lattice-estimator run: not done, because Docker is blocked on the delivery machine (disk full) and SageMath is out of scope for this delivery;
   - E3 (depends on M8, see `docs/m8-status.md`).
 - **The choice is therefore not calibrated** in the sense of spec §1 and M3, and must not be presented as such.
 

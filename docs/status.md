@@ -1,35 +1,39 @@
 # Requirement status (2026-10-28)
 
 Legend:
-- **Verified**: executed, with the evidence named.
-- **Implemented, untested**: code exists but was not executed against the criterion.
-- **Not met**: the criterion is not satisfied.
-- **Not done**: no implementation.
+- **Verified (pytest)**: covered by a test under `tests/` that passed.
+- **Verified (script)**: a repository command was run and passed.
+- **Partial**: some criteria verified, others not.
+- **Not met** / **Not done**.
 
-No pytest suite is committed yet. "Verified" below means a script or the scenario was actually run; it does not mean a CI test exists.
+Evidence details: `docs/test-results.md`.
 
 | ID | Status | Evidence / gap |
 |---|---|---|
-| FR-001 ML-KEM per FIPS 203 | Verified (script) | 240/240 ACVP cases and FIPS 203 sizes. pytest KAT suite pending. |
-| FR-002 interop | Not met | 20 cross keygen/encaps/decaps with `cryptography` (ML-KEM-768) passed. Required: 1000 per set with liboqs. |
-| FR-003 toy profiles | Partially verified | Round trips OK. DFR smoke check only (200 runs). E4 not run. |
-| FR-004 X-Wing | Verified (script) | 3/3 draft-11 vectors. |
-| FR-005 secure channel | Verified (smoke) | Round trip for RED, ORANGE and GREEN. A refused RED handshake after revocation is observed in the scenario. Tamper and downgrade tests pending. |
-| FR-006 traps and registry | Verified (scenario) | Unique token per stream; registry queried by `key_id` and `params_id`. |
-| FR-007 canary server | Verified (scenario) | Valid and unknown tokens return identical status, body and content type. Only a valid token raises an event. |
-| FR-008 SIEM ingestion and alert | Verified with the mock SIEM (scenario) | Alert fired and delivered within the scenario run. Latency not measured (E6). Real Splunk untested. |
-| FR-009 policy matrix | Partially verified | RED path observed in dry-run and apply. ORANGE and GREEN paths not executed. |
-| FR-010 exposure | Partially verified | Key-level and algorithmic sets reported (2/2 in the scenario). No synthetic ground-truth test. |
-| FR-011 rotation | Verified (scenario) | 8 secrets rotated; stolen credential then refused (401). Idempotency not separately tested. |
-| FR-012 report | Verified (scenario) | JSON and Markdown with profile, window, exposed streams, actions, and irrecoverable vs neutralised. |
-| FR-013 attacker | Not met | M8 not delivered (`docs/m8-status.md`). |
-| FR-014 one-command demo | Verified | `python tools/run.py demo` runs the simulated scenario with the mock SIEM. |
-| SEC-001 webhook auth and replay | Verified (scenario) | Forged alert → 401; replayed alert → 409. `SharedSecretPath` not exercised. |
-| SEC-002 dry-run byte-identical | Verified (scenario) | SHA-256 of `registry.db` and `policy.json` unchanged after a dry-run incident. |
-| SEC-003 guard | Verified (scenario) | Guard refuses GREEN. Host refusal and missing `CQ_LAB` not exercised. |
-| SEC-004 no secrets in logs | Partially verified | Manual grep of the scenario logs, events and reports: no `FAKE-` values, no full trap tokens. gitleaks not run; no automated redaction test. |
-| SEC-005 input validation and fuzz | Implemented, untested | Length and schema checks in frames, KEM and alerts. No fuzz run. |
-| SEC-006 key files 0600 | Implemented, partially effective | `write_secret`/`read_secret` enforce 0600 on POSIX; the check is skipped on Windows (documented). |
-| SEC-007 rate limiting | Implemented, untested | |
-| NFR-001 to NFR-005 | Not done | No CI workflow, coverage, experiments or latency measurement yet. |
-| EXP-001 to EXP-007 | Not done | |
+| FR-001 ML-KEM per FIPS 203 | Verified (script) | `tools/check_vectors.py`: 240/240 ACVP cases. Sizes printed in the guide (part 1.3). |
+| FR-002 interop with a reference | **Not met** | 20-run check against `cryptography` (ML-KEM-768) passed earlier; required: 1000 per set vs liboqs |
+| FR-003 toy profiles, DFR measured | Partial | E4 measured (`docs/calibration.md`); threshold reached only with ≥ 3000 failure-free trials; attack-cost calibration deferred |
+| FR-004 X-Wing | Verified (script) | 3/3 draft-11 vectors. Tamper test not in pytest. |
+| FR-005 secure channel | Partial | Round trip and refusal of a revoked RED key observed end to end; dedicated tamper/replay/downgrade pytest tests not delivered |
+| FR-006 traps and registry | Verified (pytest) | unique tokens; queries by profile/key/params/epoch; no secret values stored |
+| FR-007 canary server | Verified (pytest + e2e) | identical responses for valid, unknown and malformed tokens; event only for a valid token |
+| FR-008 SIEM ingestion and alert | Verified with the **mock** SIEM | e2e and unit tests; latency not measured (E6); live Splunk untested, webhook adapter missing |
+| FR-009 policy matrix | Verified (pytest) | all RED/ORANGE/GREEN cases, untrusted or allow-listed token, auto-lab |
+| FR-010 exposure | Verified (pytest) | key-level and algorithmic sets equal the synthetic ground truth; expired secrets skipped |
+| FR-011 rotation | Verified (pytest + e2e) | rotated secrets refused afterwards (401); rotation idempotent |
+| FR-012 report | Verified (pytest + e2e) | JSON and Markdown with profile, window, exposed streams, actions, Irrecoverable and Neutralised sections |
+| FR-013 attacker recovers toy keys | **Not met** | M8 not delivered (`docs/m8-status.md`); the demo attacker is simulated |
+| FR-014 one-command demo | Verified | `python tools/run.py demo` (21/21) and the e2e pytest |
+| SEC-001 webhook auth and replay | Verified (pytest + e2e) | HMAC and path-secret modes; forged → 401, stale → 400, replay → 409 |
+| SEC-002 dry-run without side effects | Verified (pytest + e2e) | SHA-256 of registry and policy unchanged |
+| SEC-003 attacker guard | Verified (pytest) | lab env, toy profiles only, lab hosts only |
+| SEC-004 no secrets in repo or logs | Partial | redaction tests and an e2e log scan pass; gitleaks not run |
+| SEC-005 input validation and fuzz | Partial | schema, length and size checks tested at the webhook and HEC endpoints; no fuzz campaign (1e5 inputs) |
+| SEC-006 key files 0600 | Partial | enforced and tested on POSIX; skipped on Windows (documented) |
+| SEC-007 rate limiting | Verified (pytest) | burst → one rotation; endpoint returns 429 |
+| NFR-001 reproducible from a clean clone | Partial | local Python path documented and exercised; Docker path not available |
+| NFR-002 type and lint clean | Verified | ruff clean on `src lab tools tests experiments`; `mypy --strict` clean on `src` (lab, tools and tests are not type-checked) |
+| NFR-003 coverage | **Not met** | 75 % total; `response` ≈ 94 %; `kem` and `channel` below 90 % in pytest |
+| NFR-004 deterministic experiments | Verified for E4 | fixed seeds; failure counts are reproducible by construction |
+| NFR-005 latency measured (E6) | Not done | |
+| EXP-001…007 | Partial | E4 implemented and run; E1 covered informally by `check-vectors`; E2, E3, E5, E6 and E7 not done |

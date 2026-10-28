@@ -53,8 +53,11 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+pythonpath = ["."]
+# Keep pytest's temporary files inside the project (var/ is git-ignored).
+addopts = "-q --basetemp=var/pytest-tmp -p no:cacheprovider"
 markers = [
+  "e2e: starts the local lab processes (no Docker)",
   "kat: official ACVP known-answer tests",
   "slow: long-running tests",
   "integration: needs the docker compose lab",

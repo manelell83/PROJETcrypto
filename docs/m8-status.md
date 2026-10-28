@@ -31,8 +31,8 @@ The guard (`lab/attacker/guard.py`) is delivered and is called before every lab-
 ## Consequences for the requirements
 
 - **FR-013** (attacker recovers toy keys, experiment E3): **not met**.
-- **EXP-003** (attack cost vs parameters): **not run**. The toy parameters therefore remain **provisional**: they are chosen on structure and a first decryption-failure check, not on measured attack cost (see `docs/decisions.md`).
-- **SEC-003** (guard): implemented and exercised by the scenario. A dedicated pytest suite is pending.
+- **EXP-003** (attack cost vs parameters): **not run**. The toy parameters therefore remain **provisional**: their decryption-failure rate is measured (E4), but their attack cost is not (see `docs/calibration.md`).
+- **SEC-003** (guard): implemented, exercised by the scenario and unit-tested (`tests/security/test_guard_and_redaction.py`).
 
 ## What a future real M8 would need (design level)
 

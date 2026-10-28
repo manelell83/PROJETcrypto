@@ -53,7 +53,8 @@ async def run_stream(
     requests_per_stream: int = 2,
 ) -> StreamResult:
     """Run one stream end to end."""
-    services = services or random.sample(SERVICES, 2)
+    # Justification (bandit B311): non-security choice of the stub services of a stream.
+    services = services or random.sample(SERVICES, 2)  # nosec B311
     reader, writer = await asyncio.open_connection(settings.proxy_host, settings.proxy_port)
     try:
         kr = await _exchange(reader, writer, hs.key_request(profile))
@@ -71,7 +72,9 @@ async def run_stream(
             payload = {
                 "stream_id": issued.stream_id,
                 "service": svc,
-                "action": random.choice(["list_invoices", "get_profile", "sync", "export"]),
+                "action": random.choice(  # noqa: S311  # nosec B311
+                    ["list_invoices", "get_profile", "sync", "export"]
+                ),
                 "credential": issued.credentials[f"{svc}.api_key"],
                 "credentials": issued.credentials,
                 "note": f"Password reset for the admin console: {issued.trap_url}",

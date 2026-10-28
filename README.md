@@ -38,14 +38,38 @@ python tools/run.py demo
 
 The demo starts the lab on `127.0.0.1` (ports 8081, 8088, 8090, 9443), runs the simulated scenario and prints `RESULT: n/n checks passed`. On machines with `make`, `make setup` and `make demo` do the same.
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| `python tools/run.py setup` | create `.venv` and install the project (`.[dev,exp]`) |
+| `python tools/run.py test` | pytest: unit, security and end-to-end suites |
+| `python tools/run.py lint` | ruff and `mypy --strict` on `src/` |
+| `python tools/run.py kat` (or `check-vectors`) | official NIST ACVP and X-Wing vectors |
+| `python tools/run.py demo [--keep]` | simulated attacker scenario on a fresh `var/demo` |
+| `python tools/run.py lab-up [--apply]` / `lab-down` | start or stop the local lab services |
+| `python tools/run.py gen RED 2 [--lab-sim]` | generate streams in the running lab |
+| `python tools/run.py exp e4 [trials]` | E4: decryption-failure rate of the toy candidates |
+| `python tools/run.py audit` | bandit and pip-audit (pip-audit needs network access) |
+
 The step-by-step lab guide (in French) is in [docs/guide/TP-canary-qday.md](docs/guide/TP-canary-qday.md).
+
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md): components, protocol, trust zones, response engine.
+- [docs/decisions.md](docs/decisions.md): OPEN items and deviations from the spec.
+- [docs/calibration.md](docs/calibration.md): toy parameters and measured DFR (E4); deferred calibration.
+- [docs/test-results.md](docs/test-results.md): test and check results actually observed.
+- [docs/m8-status.md](docs/m8-status.md): why the attacker module is not delivered and what replaces it.
+- [docs/status.md](docs/status.md): requirement-by-requirement status.
+- [siem/splunk/README.md](siem/splunk/README.md): Splunk configuration (untested) and known gaps.
 
 ## Status
 
-What has been verified and how, and what is missing: [docs/status.md](docs/status.md). In short:
-- the KEM and X-Wing vectors pass;
-- the simulated end-to-end scenario passes with the mock SIEM;
-- the pytest suite, CI, experiments E1–E7, a real Splunk integration and the attacker module (M8) are not done.
+In short:
+- the KEM and X-Wing vectors pass, and so does the pytest suite (including the end-to-end simulated scenario with the mock SIEM);
+- E4 (DFR) is measured;
+- not done: CI, experiments E1–E3 and E5–E7, a live Splunk test, the lattice-estimator calibration and the attacker module (M8).
 
 ## Limitations (spec §12)
 
@@ -53,4 +77,5 @@ What has been verified and how, and what is missing: [docs/status.md](docs/statu
 2. Synthetic traffic says something about the crypto class, not about whether real traffic was captured.
 3. The own implementation is for study. A realistic GREEN deployment should use a reviewed library.
 4. No novelty claim is made without a proper literature search.
-5. Toy profiles are deliberately weak. Their parameters are not yet calibrated by measurement (E3, E4).
+5. Toy profiles are deliberately weak. Their DFR is measured (E4), but their attack cost is not (E3 and lattice-estimator deferred), so the parameter choice remains provisional.
+6. The attacker step of the demo is simulated (lab oracle). No cryptanalysis is implemented.

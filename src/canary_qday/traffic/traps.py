@@ -10,7 +10,8 @@ TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 SECRET_KINDS: dict[str, int] = {
     # kind -> sensitivity (1 low .. 5 critical)
     "api_key": 3,
-    "db_password": 5,
+    # Justification (bandit B105): the key is a secret *kind*, the value a sensitivity level.
+    "db_password": 5,  # nosec B105
     "session_cookie": 2,
 }
 

@@ -71,7 +71,9 @@ class Summary:
     def check(self, name: str, ok: bool, detail: str = "") -> None:
         """Record and print a pass/fail check."""
         self.checks.append({"check": name, "ok": ok, "detail": detail})
-        print(f"           [{'PASS' if ok else 'FAIL'}] {name}" + (f" ({detail})" if detail else ""))
+        print(
+            f"           [{'PASS' if ok else 'FAIL'}] {name}" + (f" ({detail})" if detail else "")
+        )
 
     @property
     def ok(self) -> bool:
@@ -85,11 +87,18 @@ def _sha(path: Path) -> str:
 
 def _settings(data_dir: Path, ports: lab.Ports) -> Settings:
     return Settings(
-        data_dir=data_dir, secrets_dir=data_dir / "secrets", registry_db=data_dir / "registry.db",
-        response_db=data_dir / "response.db", policy_file=data_dir / "policy.json",
-        reports_dir=data_dir / "reports", canary_base_url=f"http://127.0.0.1:{ports.canary}",
-        proxy_host="127.0.0.1", proxy_port=ports.proxy, siem_sink="hec",
-        hec_url=f"http://127.0.0.1:{ports.hec}", response_url=f"http://127.0.0.1:{ports.response}",
+        data_dir=data_dir,
+        secrets_dir=data_dir / "secrets",
+        registry_db=data_dir / "registry.db",
+        response_db=data_dir / "response.db",
+        policy_file=data_dir / "policy.json",
+        reports_dir=data_dir / "reports",
+        canary_base_url=f"http://127.0.0.1:{ports.canary}",
+        proxy_host="127.0.0.1",
+        proxy_port=ports.proxy,
+        siem_sink="hec",
+        hec_url=f"http://127.0.0.1:{ports.hec}",
+        response_url=f"http://127.0.0.1:{ports.response}",
     )
 
 
@@ -103,8 +112,9 @@ async def _use_credential(s: Settings, service: str, credential: str) -> int:
         prof, epoch, _kid, ek = hs.parse_key_response(kr)
         hello, sess = hs.client_hello(prof, epoch, ek, uuid.uuid4().bytes)
         writer.write(framing.encode(hello.type, hello.payload))
-        req = sess.seal(json.dumps({"service": service, "action": "export",
-                                    "credential": credential}).encode())
+        req = sess.seal(
+            json.dumps({"service": service, "action": "export", "credential": credential}).encode()
+        )
         writer.write(framing.encode(req.type, req.payload))
         resp = await framing.read_frame(reader)
         return int(json.loads(sess.open(resp))["status"])
@@ -129,7 +139,8 @@ def _alert_count(ports: lab.Ports) -> int:
 
 def _load_oracle(data_dir: Path, stream_id: str) -> dict[str, Any]:
     rec = json.loads(read_secret(data_dir / "lab-oracle" / f"{stream_id}.json"))
-    assert rec["banner"] == BANNER
+    if rec.get("banner") != BANNER:
+        raise ValueError("not a lab-oracle record")
     return dict(rec)
 
 
@@ -150,30 +161,45 @@ def run(data_dir: Path, ports: lab.Ports, *, keep: bool = False) -> Summary:
         streams: dict[str, list[generator.StreamResult]] = {}
         for prof, n in (("RED", 2), ("ORANGE", 1), ("GREEN", 1)):
             streams[prof] = [asyncio.run(generator.run_stream(store, s, prof)) for _ in range(n)]
-        sm.step("0", "lab up (response engine DRY-RUN) and synthetic traffic generated",
-                streams={p: len(v) for p, v in streams.items()})
-        sm.check("all generated requests accepted (HTTP 200 from backends)",
-                 all(c == 200 for v in streams.values() for r in v for c in r.responses))
+        sm.step(
+            "0",
+            "lab up (response engine DRY-RUN) and synthetic traffic generated",
+            streams={p: len(v) for p, v in streams.items()},
+        )
+        sm.check(
+            "all generated requests accepted (HTTP 200 from backends)",
+            all(c == 200 for v in streams.values() for r in v for c in r.responses),
+        )
 
         # -- 1. passive observation -------------------------------------------
         time.sleep(0.5)
-        events = [json.loads(ln) for ln in
-                  (data_dir / "siem" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+        events = [
+            json.loads(ln)
+            for ln in (data_dir / "siem" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
         hand = [e["event"] for e in events if e.get("event", {}).get("event") == "handshake"]
         visible = sorted({(e["profile"], e["key_id"]) for e in hand})
-        sm.step("1", "passive observation: public handshake metadata only",
-                visible_profile_key_ids=visible,
-                note="captured ciphertexts cannot be read without breaking the KEM; "
-                     "passive harvesting raises no alert (limitation 1)")
+        sm.step(
+            "1",
+            "passive observation: public handshake metadata only",
+            visible_profile_key_ids=visible,
+            note="captured ciphertexts cannot be read without breaking the KEM; "
+            "passive harvesting raises no alert (limitation 1)",
+        )
         sm.check("no alert after passive observation", _alert_count(ports) == 0)
 
         # -- 2. simulated break ------------------------------------------------
         red1, red2 = streams["RED"]
         require_lab("RED", s.canary_base_url, f"{s.proxy_host}:{s.proxy_port}".split(":")[0])
         oracle1 = _load_oracle(data_dir, red1.stream_id)
-        sm.step("2", BANNER, stream_id=red1.stream_id, profile=oracle1["profile"],
-                key_id=oracle1["key_id"],
-                learned="trap URL + one synthetic credential (values not printed)")
+        sm.step(
+            "2",
+            BANNER,
+            stream_id=red1.stream_id,
+            profile=oracle1["profile"],
+            key_id=oracle1["key_id"],
+            learned="trap URL + one synthetic credential (values not printed)",
+        )
 
         # -- 3. credential reuse -----------------------------------------------
         code = asyncio.run(_use_credential(s, oracle1["service"], oracle1["credential"]))
@@ -186,50 +212,71 @@ def run(data_dir: Path, ports: lab.Ports, *, keep: bool = False) -> Summary:
         r = httpx.get(oracle1["trap_url"], headers={"User-Agent": UA}, timeout=5)
         valid_resp = (r.status_code, r.text, r.headers.get("content-type"))
         rep = _wait_report(s.reports_dir, red1.stream_id)
-        sm.step("4a", "trap used -> canary -> mock SIEM -> signed webhook -> response (DRY-RUN)",
-                canary_http=r.status_code,
-                incident=rep and rep["incident_id"],
-                actions=rep and [(a["kind"], a["status"]) for a in rep["actions"]],
-                pending_approval=rep and rep["pending_approval"])
+        sm.step(
+            "4a",
+            "trap used -> canary -> mock SIEM -> signed webhook -> response (DRY-RUN)",
+            canary_http=r.status_code,
+            incident=rep and rep["incident_id"],
+            actions=rep and [(a["kind"], a["status"]) for a in rep["actions"]],
+            pending_approval=rep and rep["pending_approval"],
+        )
         sm.check("incident report produced", rep is not None)
         sm.check("report marked dry_run", bool(rep and rep["dry_run"]))
         sm.check("registry byte-identical after dry-run", _sha(s.registry_db) == reg_before)
         sm.check("lab policy byte-identical after dry-run", _sha(s.policy_file) == pol_before)
-        sm.check("heavy actions wait for approval",
-                 bool(rep and set(rep["pending_approval"]) >= {"firewall_block", "service_stop"}))
+        sm.check(
+            "heavy actions wait for approval",
+            bool(rep and set(rep["pending_approval"]) >= {"firewall_block", "service_stop"}),
+        )
 
         # -- C. controls ---------------------------------------------------------
         n_alerts = _alert_count(ports)
-        bogus = httpx.get(f"{s.canary_base_url}/t/{'0' * 32}", headers={"User-Agent": UA},
-                          timeout=5)
+        bogus = httpx.get(
+            f"{s.canary_base_url}/t/{'0' * 32}", headers={"User-Agent": UA}, timeout=5
+        )
         time.sleep(1.0)
         sm.step("C", "controls (negative tests)")
-        sm.check("unknown token gets an identical response",
-                 (bogus.status_code, bogus.text, bogus.headers.get("content-type")) == valid_resp)
+        sm.check(
+            "unknown token gets an identical response",
+            (bogus.status_code, bogus.text, bogus.headers.get("content-type")) == valid_resp,
+        )
         sm.check("unknown token raises no alert", _alert_count(ports) == n_alerts)
         secret = read_secret(data_dir / "secrets" / "webhook_secret.txt")
         tok = oracle1["trap_url"].rsplit("/", 1)[1]
         alert = {
-            "alert_id": str(uuid.uuid4()), "ts": datetime.now(UTC).isoformat(),
-            "rule": "control_replay", "severity": "high",
-            "event": {"event": "trap_triggered", "event_id": str(uuid.uuid4()),
-                      "ts": datetime.now(UTC).isoformat(), "token_id": token_id(tok),
-                      "stream_id": red1.stream_id, "profile": "RED", "params_id": "toy-n64-k1",
-                      "key_id": red1.key_id, "epoch": 1, "src_ip": "127.0.0.1",
-                      "user_agent": UA},
+            "alert_id": str(uuid.uuid4()),
+            "ts": datetime.now(UTC).isoformat(),
+            "rule": "control_replay",
+            "severity": "high",
+            "event": {
+                "event": "trap_triggered",
+                "event_id": str(uuid.uuid4()),
+                "ts": datetime.now(UTC).isoformat(),
+                "token_id": token_id(tok),
+                "stream_id": red1.stream_id,
+                "profile": "RED",
+                "params_id": "toy-n64-k1",
+                "key_id": red1.key_id,
+                "epoch": 1,
+                "src_ip": "127.0.0.1",
+                "user_agent": UA,
+            },
         }
         body = json.dumps(alert).encode()
         url = f"{s.response_url}/v1/alerts"
         ts = str(int(time.time()))
-        forged = httpx.post(url, content=body, headers={"X-Timestamp": ts,
-                                                        "X-Signature": "0" * 64}, timeout=10)
+        forged = httpx.post(
+            url, content=body, headers={"X-Timestamp": ts, "X-Signature": "0" * 64}, timeout=10
+        )
         sm.check("forged alert rejected (401 E_SIG_INVALID)", forged.status_code == 401)
         hdr = {"X-Timestamp": ts, "X-Signature": sign_hmac(secret, ts, body)}
         first = httpx.post(url, content=body, headers=hdr, timeout=10)
         again = httpx.post(url, content=body, headers=hdr, timeout=10)
-        sm.check("replayed alert rejected (409 E_REPLAY)",
-                 first.status_code == 202 and again.status_code == 409,
-                 f"{first.status_code} then {again.status_code}")
+        sm.check(
+            "replayed alert rejected (409 E_REPLAY)",
+            first.status_code == 202 and again.status_code == 409,
+            f"{first.status_code} then {again.status_code}",
+        )
         try:
             require_lab("GREEN")
             refused = False
@@ -244,23 +291,36 @@ def run(data_dir: Path, ports: lab.Ports, *, keep: bool = False) -> Summary:
         require_lab_host(oracle2["trap_url"])
         httpx.get(oracle2["trap_url"], headers={"User-Agent": UA}, timeout=5)
         rep2 = _wait_report(s.reports_dir, red2.stream_id)
-        sm.step("4b", "response engine restarted with --apply; second RED trap used",
-                incident=rep2 and rep2["incident_id"],
-                actions=rep2 and [(a["kind"], a["status"]) for a in rep2["actions"]])
+        sm.step(
+            "4b",
+            "response engine restarted with --apply; second RED trap used",
+            incident=rep2 and rep2["incident_id"],
+            actions=rep2 and [(a["kind"], a["status"]) for a in rep2["actions"]],
+        )
         sm.check("applied report produced", bool(rep2 and not rep2["dry_run"]))
 
         # -- 5. containment -------------------------------------------------------
         pol = labpolicy.load(s.policy_file)
-        rotated = (next((a["detail"]["rotated"] for a in rep2["actions"]
-                         if a["kind"] == "rotate_secrets"), []) if rep2 else [])
-        sm.step("5", "containment observed", allowed_profiles=pol.allowed_profiles,
-                revoked_key_ids=pol.revoked_key_ids, epochs=pol.epochs,
-                rotated_secrets=len(rotated),
-                key_level_streams=rep2 and len(rep2["exposed_streams"]["key_level"]),
-                algorithmic_streams=rep2 and len(rep2["exposed_streams"]["algorithmic"]))
+        rotated = (
+            next(
+                (a["detail"]["rotated"] for a in rep2["actions"] if a["kind"] == "rotate_secrets"),
+                [],
+            )
+            if rep2
+            else []
+        )
+        sm.step(
+            "5",
+            "containment observed",
+            allowed_profiles=pol.allowed_profiles,
+            revoked_key_ids=pol.revoked_key_ids,
+            epochs=pol.epochs,
+            rotated_secrets=len(rotated),
+            key_level_streams=rep2 and len(rep2["exposed_streams"]["key_level"]),
+            algorithmic_streams=rep2 and len(rep2["exposed_streams"]["algorithmic"]),
+        )
         sm.check("RED removed from allow-list", "RED" not in pol.allowed_profiles)
-        sm.check("ORANGE and GREEN still allowed",
-                 {"ORANGE", "GREEN"} <= set(pol.allowed_profiles))
+        sm.check("ORANGE and GREEN still allowed", {"ORANGE", "GREEN"} <= set(pol.allowed_profiles))
         sm.check("RED key revoked", red1.key_id in pol.revoked_key_ids)
         sm.check("exposed secrets rotated", len(rotated) > 0)
 
@@ -272,16 +332,25 @@ def run(data_dir: Path, ports: lab.Ports, *, keep: bool = False) -> Summary:
         except (CanaryError, ConnectionError) as e:
             red_refused, why = True, str(e)
         green = asyncio.run(generator.run_stream(store, s, "GREEN"))
-        sm.step("6", "attacker retries; legitimate GREEN traffic continues",
-                stolen_credential_http=code2, new_red_stream=why, green_codes=green.responses)
+        sm.step(
+            "6",
+            "attacker retries; legitimate GREEN traffic continues",
+            stolen_credential_http=code2,
+            new_red_stream=why,
+            green_codes=green.responses,
+        )
         sm.check("stolen credential now refused (401)", code2 == 401)
         sm.check("new RED stream refused by proxy", red_refused)
         sm.check("GREEN traffic still served", all(c == 200 for c in green.responses))
     finally:
         out = data_dir / "scenario-summary.json"
         if data_dir.exists():
-            out.write_text(json.dumps({"ok": sm.ok, "steps": sm.steps, "checks": sm.checks},
-                                      indent=2, default=str), encoding="utf-8")
+            out.write_text(
+                json.dumps(
+                    {"ok": sm.ok, "steps": sm.steps, "checks": sm.checks}, indent=2, default=str
+                ),
+                encoding="utf-8",
+            )
         if not keep:
             lab.down(data_dir)
     passed = sum(c["ok"] for c in sm.checks)

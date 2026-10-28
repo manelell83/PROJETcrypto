@@ -7,11 +7,14 @@ into <data_dir>/secrets/*.txt (0600 on POSIX) and passed as *_FILE variables.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
 import socket
-import subprocess
+
+# Justification (bandit B404/B603/B607): the lab launcher only runs fixed local commands.
+import subprocess  # nosec B404
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -109,7 +112,7 @@ def start_service(name: str, data_dir: Path, ports: Ports, *, apply: bool) -> in
     logs = data_dir / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     log = (logs / f"{name}.log").open("ab")
-    proc = subprocess.Popen(_commands(ports)[name], env=env, stdout=log, stderr=log)  # noqa: S603
+    proc = subprocess.Popen(_commands(ports)[name], env=env, stdout=log, stderr=log)  # noqa: S603  # nosec B603
     port = {"mock-siem": ports.hec, "response": ports.response,
             "canary": ports.canary, "proxy": ports.proxy}[name]
     if not _wait_port(port):
@@ -137,13 +140,11 @@ def stop_service(name: str, data_dir: Path) -> None:
 
 def _kill(pid: int) -> None:
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],  # noqa: S603, S607
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],  # noqa: S603, S607  # nosec
                        capture_output=True, check=False)
     else:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.kill(pid, 15)
-        except ProcessLookupError:
-            pass
 
 
 def up(data_dir: Path, ports: Ports, *, apply: bool = False) -> dict[str, int]:

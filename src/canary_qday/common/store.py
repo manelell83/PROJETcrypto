@@ -228,10 +228,11 @@ class Store:
         """All secrets issued in the given streams (any status)."""
         if not stream_ids:
             return []
+        # Justification (bandit B608): only "?" placeholders are interpolated; values are bound.
         marks = ",".join("?" * len(stream_ids))
         with self._conn() as c:
             rows = c.execute(
-                f"SELECT * FROM secrets WHERE stream_id IN ({marks}) ORDER BY secret_id",  # noqa: S608
+                f"SELECT * FROM secrets WHERE stream_id IN ({marks}) ORDER BY secret_id",  # noqa: S608  # nosec B608
                 stream_ids,
             )
             return [self._secret(r) for r in rows]

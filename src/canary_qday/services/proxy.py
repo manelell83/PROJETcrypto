@@ -99,7 +99,7 @@ class Proxy:
         ))
 
     async def _backend(self, req: dict[str, object]) -> dict[str, object]:
-        model = backend_stub.Request_.model_validate(req)
+        model = backend_stub.BackendRequest.model_validate(req)
         if self.backend_url:
             async with httpx.AsyncClient(timeout=5) as client:
                 r = await client.post(f"{self.backend_url}/api", json=model.model_dump())

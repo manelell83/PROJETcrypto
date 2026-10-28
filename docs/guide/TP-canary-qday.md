@@ -13,7 +13,10 @@
 3. expliquer un KEM hybride (X-Wing) et ce que son combineur lie ;
 4. comprendre un canal chiffré qui lie le profil cryptographique à la dérivation de clés (anti-*downgrade*) ;
 5. suivre une chaîne de détection : piège (*canary*) → événement → SIEM → alerte signée → réponse automatisée ;
-6. distinguer ce qu'une réponse à incident peut neutraliser de ce qui est **irrécupérable**.
+6. distinguer ce qu'une réponse à incident peut neutraliser de ce qui est **irrécupérable** ;
+7. lire des résultats de tests et de mesures (taux d'échec de déchiffrement) avec un esprit critique : ce qui est mesuré, ce qui est simulé, ce qui reste à vérifier.
+
+**Notions abordées :** Module-LWE, NTT, distribution binomiale centrée, compression, transformation FO, KEM hybride, HKDF, AEAD et nonces, *downgrade* et rejeu, canaris (*honeytokens*), SIEM, authentification de webhook (HMAC), politique de réponse, *dry-run*, idempotence, exposition et rotation de secrets.
 
 ## Prérequis
 
@@ -40,7 +43,80 @@ python tools/run.py setup
 python tools/run.py
 ```
 
-La commande affiche la liste des cibles (`setup lint test kat check-vectors lab-up lab-down gen demo scenario audit`) et se termine avec le code 2 (aucune cible donnée), ce qui est normal.
+La commande affiche la liste des cibles (`setup lint test kat check-vectors lab-up lab-down gen demo scenario exp audit`) et se termine avec le code 2 (aucune cible donnée), ce qui est normal.
+
+---
+
+## Partie 0.1 — Arborescence et configuration (≈ 5 min)
+
+```
+PROJEThanin/
+├─ src/canary_qday/
+│  ├─ kem/        ML-KEM (FIPS 203) et profils jouets — bibliothèque standard uniquement
+│  ├─ hybrid/     X-Wing (brouillon -11) et combineur « à la TLS » (comparaison)
+│  ├─ channel/    trames, handshake KEM, HKDF, ChaCha20-Poly1305
+│  ├─ traffic/    générateur, pièges, registre, oracle de labo (simulation)
+│  ├─ services/   proxy, services backend factices, serveur canary
+│  ├─ siem/       interface SiemSink, sink fichier, sink Splunk HEC, SIEM mock
+│  ├─ response/   webhook, politique, exposition, actions, rapport
+│  └─ common/     erreurs, configuration, journaux masqués, registre SQLite
+├─ lab/attacker/guard.py          garde-fous de laboratoire
+├─ lab/scenario/simulated_attacker.py   scénario d'attaquant SIMULÉ
+├─ experiments/runners/e4_dfr.py  mesure du taux d'échec de déchiffrement
+├─ tools/run.py                   lanceur de tâches (remplace make)
+├─ tools/lab.py                   démarrage/arrêt des services locaux
+├─ tools/check_vectors.py         vérification des vecteurs officiels
+├─ tests/                         unit/, security/, e2e/ (pytest)
+├─ vectors/                       vecteurs NIST ACVP et X-Wing + provenance
+├─ siem/splunk/                   configuration Splunk (NON testée en conditions réelles)
+└─ docs/                          documentation technique (EN) et ce guide
+```
+
+**Configuration.** Tout passe par des variables d'environnement `CQ_*` (voir `src/canary_qday/common/config.py` et `.env.example`). Pour ce TP, vous n'avez **rien à configurer** : `tools/lab.py` fixe les variables, génère des secrets de laboratoire aléatoires dans `var/demo/secrets/` et les transmet par fichiers (`CQ_*_FILE`). Le dossier `var/` n'est pas versionné.
+
+| Variable | Rôle | Valeur dans le labo |
+|---|---|---|
+| `CQ_DATA_DIR` | dossier des données (registre, politique, rapports, journaux) | `var/demo` |
+| `CQ_SIEM_SINK` | `file` ou `hec` | `hec` (vers le SIEM mock) |
+| `CQ_APPLY` | `1` = exécuter les actions ; sinon **dry-run** | `0`, puis `1` à l'étape 4b |
+| `CQ_LAB`, `CQ_LAB_SIM` | autorisent le scénario simulé | positionnées par `tools/run.py demo` |
+
+---
+
+## Partie 0.2 — Tests automatisés et qualité du code (≈ 5 min)
+
+```bash
+python tools/run.py test
+```
+
+**Résultat attendu** (exécution de référence du 2026-10-28) : `64 passed, 1 warning`, en ≈ 30 s. L'avertissement provient de FastAPI/Starlette (`StarletteDeprecationWarning` sur `httpx`) et non du projet. Le test `tests/e2e/test_simulated_scenario.py` démarre de vrais processus locaux sur les ports 8281, 8288, 8290 et 9643 (décalage de 200).
+
+| Dossier | Ce qui est testé |
+|---|---|
+| `tests/unit/test_response_policy.py` | matrice de politique RED/ORANGE/GREEN, jeton non fiable, `--auto-lab` |
+| `tests/unit/test_response_engine.py` | exposition (vérité terrain synthétique), rotation, idempotence, dry-run octet pour octet, limitation de débit, approbations |
+| `tests/unit/test_siem_and_services.py` | pièges, registre sans secret en clair, canary (réponses identiques), services backend, oracle (jamais GREEN), SIEM mock (règle, signature, HTTP) |
+| `tests/security/test_webhook.py` | HMAC, fraîcheur, rejeu, schéma strict, taille, limitation de débit, jeton admin, mode « secret dans l'URL » |
+| `tests/security/test_guard_and_redaction.py` | garde-fous, masquage des journaux, sink HEC (pas de jeton affiché, tampon disque), fichiers secrets |
+| `tests/e2e/test_simulated_scenario.py` | scénario complet (21 vérifications) et absence de `FAKE-` dans les journaux, événements et rapports |
+
+Pour lancer seulement une partie :
+
+```bash
+.venv/Scripts/python -m pytest tests/unit -q
+```
+
+Sous Linux et macOS, l'interpréteur est `.venv/bin/python`.
+
+Qualité du code :
+
+```bash
+python tools/run.py lint
+```
+
+**Attendu :** `All checks passed!` (ruff) puis `Success: no issues found in 51 source files` (mypy `--strict` sur `src/`).
+
+> Le cœur cryptographique est vérifié par les vecteurs officiels (partie 1) et par le scénario de bout en bout. Les tests unitaires dédiés (NTT, codecs, trames altérées) ne font **pas** partie de cette livraison (voir `docs/test-results.md`).
 
 ---
 
@@ -127,6 +203,32 @@ Ouvrez `src/canary_qday/channel/handshake.py` et repérez :
 - la clé de session `K = HKDF(ss, info = "canary-qday/v1" ‖ profile_id ‖ H(transcript))` ;
 - les nonces ChaCha20-Poly1305 = compteur de 64 bits par direction.
 
+### 2.3 Expérience E4 : mesurer le taux d'échec de déchiffrement (≈ 3 min)
+
+Un KEM de type Kyber peut, avec une faible probabilité, échouer à déchiffrer. La clé décapsulée diffère alors de la clé encapsulée, et le rejet implicite masque l'erreur. Ce taux (DFR) dépend de n, k, η et surtout de la compression (du, dv).
+
+```bash
+python tools/run.py exp e4 2000
+```
+
+Le script essaie chaque candidat jouet 2000 fois (200 fois pour les deux témoins négatifs `du4dv2`), avec des **graines déterministes réservées à l'expérience**. Il écrit dans `experiments/results/e4/<horodatage>/` :
+- `config.yaml` ;
+- `raw.jsonl` (un essai par ligne) ;
+- `env.json` ;
+- `summary.csv` ;
+- `fig.png`.
+
+**Résultats attendus** (exécution de référence du 2026-10-28 ; détail dans `docs/calibration.md`). Durée ≈ 2,5 min.
+
+| Candidat | Essais | Échecs | Borne sup. 95 % | Seuil 10⁻³ atteint ? |
+|---|---|---|---|---|
+| toy-n64-k1 (RED), toy-n64-k2 (ORANGE), toy-n64-k3, toy-n128-k2 | 2000 chacun | 0 | 1,5 × 10⁻³ | non (`meets_threshold = False` : pas assez d'essais) |
+| toy-n64-k1-du4dv2, toy-n64-k2-du4dv2 (témoins) | 200 chacun | 200 | 1 | non |
+
+Avec 5000 essais (`python tools/run.py exp e4 5000`, ≈ 6 à 7 min), les quatre candidats `du = 10, dv = 4` restent à 0 échec et leur borne descend à 6 × 10⁻⁴ : ils franchissent alors le seuil. Les graines étant fixées, vous devez retrouver **exactement** les mêmes nombres d'échecs. Les durées, elles, dépendent de votre machine.
+
+**Comment interpréter.** Avec 0 échec sur N essais, on ne peut **pas** conclure que la DFR est nulle. On peut seulement borner : DFR < 3/N à 95 % (« règle de trois »), soit 1,5 × 10⁻³ pour N = 2000. Le seuil d'acceptation documenté est une borne supérieure à 95 % **inférieure à 10⁻³**. Il faut donc au moins 3000 essais sans échec pour qu'un candidat le franchisse. Pour les vrais paramètres ML-KEM, la DFR vaut 2⁻¹³⁹ (512), 2⁻¹⁶⁴ (768) et 2⁻¹⁷⁴ (1024) d'après FIPS 203, tableau 1 : elle ne se mesure pas, elle se calcule.
+
 ### Questions — partie 2
 
 4. Si un intermédiaire remplace l'identifiant de profil `GREEN` par `RED` dans le `HELLO`, que se passe-t-il ? Citez **deux** mécanismes du code qui l'empêchent.
@@ -153,6 +255,8 @@ Quatre processus démarrent sur `127.0.0.1` :
 | proxy | 9443 | termine le canal KEM et relaie vers les services backend |
 
 **Attendu :** `lab up: {'mock-siem': ..., 'response': ..., 'canary': ..., 'proxy': ...}`. Les journaux sont dans `var/demo/logs/`.
+
+> Si vous avez **déjà lancé la démo** (partie 5), son fichier `var/demo/policy.json` a retiré RED de la liste autorisée. Dans ce cas, `gen RED` est refusé (`stream refused ... PolicyError`). Arrêtez le labo, supprimez le dossier `var/demo`, puis relancez `lab-up`.
 
 ### 3.2 Générer quelques flux
 
@@ -289,20 +393,87 @@ python tools/run.py lab-down
 
 ---
 
+## Partie 5bis — Le SIEM mock et les limites de l'intégration Splunk (≈ 10 min)
+
+### Ce que fait le SIEM mock
+
+`src/canary_qday/siem/mock_hec.py` **n'est pas Splunk**. Il reproduit seulement le contrat sur lequel le projet s'appuie :
+
+1. un point d'entrée compatible HEC, `POST /services/collector/event`, avec l'en-tête `Authorization: Splunk <jeton>` comparé en temps constant ;
+2. une règle de corrélation : `event = trap_triggered`, au plus une alerte par `token_id` toutes les 60 s ;
+3. un webhook vers le moteur de réponse, **signé** par HMAC-SHA256 (en-têtes `X-Timestamp` et `X-Signature`).
+
+Pendant la démo, il stocke chaque événement reçu dans `var/demo/siem/events.jsonl` et expose les alertes émises sur `GET /alerts`. Avec le labo démarré (`python tools/run.py lab-up`) :
+
+```bash
+curl -s http://127.0.0.1:8088/alerts
+```
+
+**Attendu :** `[]` tant qu'aucun piège n'a été utilisé. Sinon, une liste de `{"alert_id": ..., "fired_at": ...}`.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8088/services/collector/event -d "{}"
+```
+
+Sous PowerShell : `curl.exe -s -o NUL -w "%{http_code}" -X POST http://127.0.0.1:8088/services/collector/event -d "{}"`.
+
+**Attendu :** `401`, car aucun jeton HEC n'est fourni.
+
+### Ce qui n'est PAS testé : Splunk réel
+
+| Élément | Fichier | Statut |
+|---|---|---|
+| Sink HEC (envoi, tampon disque si le SIEM est indisponible) | `src/canary_qday/siem/splunk_hec.py` | testé contre un point d'accès **injoignable** (mise en tampon, jeton jamais affiché), **jamais** contre un vrai Splunk |
+| Type de source, règle d'alerte | `siem/splunk/props.conf`, `siem/splunk/savedsearches.conf` | **non testés** |
+| Webhook natif Splunk vers le moteur de réponse | — | **ne fonctionnera pas tel quel** : Splunk envoie son propre format JSON (`sid`, `result`, …), alors que le moteur attend le schéma `Alert`. Un adaptateur est nécessaire et **n'est pas implémenté**. |
+
+Le webhook natif de Splunk ne permet pas d'ajouter un en-tête de signature (seul `param.user_agent` est documenté). C'est pourquoi le moteur propose aussi le mode `SharedSecretPath` (secret dans l'URL, à combiner avec l'isolement réseau). La liste de contrôle pour un futur test réel est dans `siem/splunk/README.md`.
+
+### Questions — partie 5bis
+
+15. Pourquoi la règle limite-t-elle les alertes à une par `token_id` et par minute ? Que se passerait-il sans cette limite, côté moteur de réponse ?
+16. Comparez `HmacHeader` et `SharedSecretPath` : contre quelle menace chacun protège-t-il, et laquelle reste ouverte avec le secret dans l'URL ?
+17. Pourquoi un test réussi avec le SIEM mock ne prouve-t-il **pas** que l'intégration Splunk fonctionne ?
+
+---
+
 ## Partie 6 — Bilan : ce qui a été vérifié
 
-| Élément | Statut lors de l'exécution de référence |
+| Élément | Statut lors de l'exécution de référence (2026-10-28) |
 |---|---|
 | Vecteurs ACVP (240) et X-Wing (3) | vérifiés : 243/243 |
-| Scénario simulé de bout en bout (mock SIEM) | vérifié : 21/21 |
-| Absence d'identifiants factices dans les journaux | vérifiée manuellement (grep) |
-| Suite pytest, CI, couverture | **non faites** |
+| Suite pytest (unitaires, sécurité, e2e) | 64 réussis, 1 avertissement tiers |
+| Scénario simulé de bout en bout (SIEM mock) | vérifié : 21/21 |
+| Absence d'identifiants factices dans les journaux | vérifiée par le test e2e et par grep |
+| ruff, mypy `--strict` (`src/`), bandit | propres (constats bandit justifiés, voir `docs/test-results.md`) |
+| E4 : taux d'échec de déchiffrement | mesuré (voir partie 2.3 et `docs/calibration.md`) |
+| Couverture de code | 75 % au total : seuil de 80 % **non atteint** ; `response` ≈ 94 % |
 | Attaque réelle sur les profils jouets (M8, E3) | **non livrée** |
-| Calibrage des paramètres jouets (E4, lattice-estimator) | **non fait** : paramètres provisoires |
-| Intégration avec un vrai Splunk | **non testée** |
+| Calibrage par lattice-estimator | **non fait** (Docker indisponible) : paramètres provisoires |
+| Intégration avec un vrai Splunk | **non testée** ; adaptateur de webhook manquant |
 | Interopérabilité à grande échelle (1000 échanges) | **non faite** : 20 échanges avec OpenSSL ont réussi |
+| pip-audit, gitleaks, CI | **non exécutés** |
 
-Le détail par exigence est dans `docs/status.md`.
+Le détail par exigence est dans `docs/status.md` ; les résultats bruts sont dans `docs/test-results.md`.
+
+### Comment interpréter ces résultats
+
+- **Un test qui passe** montre que le comportement correspond aux cas testés. Il ne prouve **pas** la sécurité cryptographique.
+- **Une vérification « simulée »** (étape 2 du scénario) ne démontre rien sur la difficulté de casser RED ou ORANGE.
+- **Une mesure** (E4) vaut pour cette machine, ce nombre d'essais et ces graines. Une absence d'échec se traduit par une **borne**, pas par une valeur nulle.
+- **Un élément « non testé »** doit être considéré comme inconnu, pas comme fonctionnel.
+
+---
+
+## Limites scientifiques à retenir
+
+1. **Le canary ne détecte pas la collecte passive.** Il détecte seulement l'**utilisation** d'un piège synthétique déchiffré. Un attaquant prudent peut ignorer les pièges.
+2. **Le trafic synthétique** renseigne sur une classe de cryptographie, pas sur la capture effective de trafic réel.
+3. **L'implémentation ML-KEM** est un objet d'étude : pas de temps constant, pas d'usage en production. Un déploiement réaliste du niveau GREEN doit utiliser une bibliothèque relue.
+4. **Les profils jouets** sont volontairement faibles. Leur DFR est mesurée, mais leur **coût d'attaque ne l'est pas** (E3 et lattice-estimator différés). Le choix RED/ORANGE est donc **provisoire**.
+5. **Le régime jouet** (petites dimensions) n'est pas le régime standard. Rien ne s'extrapole directement à ML-KEM-512/768/1024.
+6. **L'étape « attaquant » est simulée.** Aucune cryptanalyse n'est implémentée, et rien dans ce TP ne suggère un affaiblissement de ML-KEM ou de X-Wing.
+7. **Aucune revendication de nouveauté** n'est faite sans recherche bibliographique approfondie.
 
 ---
 
@@ -320,6 +491,10 @@ Le détail par exigence est dans `docs/status.md`.
 | `sha256sum` introuvable sous PowerShell | outil absent | `Get-FileHash -Algorithm SHA256 <fichier>` |
 | `curl` se comporte différemment sous PowerShell | `curl` y est un alias | utiliser `curl.exe` |
 | Accents mal affichés (`modifi�`) dans les sorties `python -c` | encodage de la console Windows | sans effet sur le résultat ; pour un affichage correct : `$env:PYTHONUTF8="1"` (PowerShell) ou `set PYTHONUTF8=1` (cmd) |
+| `python tools/run.py test` échoue sur l'e2e avec un port occupé | les ports 8281, 8288, 8290 et 9643 sont pris | libérer ces ports ou arrêter le processus qui les utilise ; les autres tests ne sont pas concernés |
+| `PermissionError` dans `var/pytest-tmp` | un précédent pytest tient encore un fichier (Windows) | fermer les processus Python restants, puis supprimer `var/pytest-tmp` |
+| `python tools/run.py audit` échoue sur pip-audit | pas d'accès réseau, ou disque système plein (cache) | non bloquant pour le TP ; relancer avec une connexion et de l'espace libre |
+| `exp e4` très long | `toy-n128-k2` est le candidat le plus lent (Python pur) | réduire le nombre d'essais (`exp e4 500`) pour un essai rapide ; la borne à 95 % sera alors plus large |
 | Plusieurs rapports dans `var/demo/reports/` après la démo | normal : 3 incidents (dry-run, alerte témoin du rejeu, `--apply`), chacun en `.json` et `.md` | le rapport de l'étape 4b est le plus récent |
 
 ---
@@ -327,5 +502,5 @@ Le détail par exigence est dans `docs/status.md`.
 ## Pour aller plus loin (hors TP)
 
 - Comparer le coût de ML-KEM-512/768/1024 dans l'implémentation Python et dans `cryptography` (expérience E2 : pas encore implémentée).
-- Mesurer le taux d'échec de déchiffrement des profils jouets et comparer les variantes `du4dv2` (expérience E4).
+- Modifier `du`/`dv` d'un candidat dans `src/canary_qday/kem/profiles.py` (sur une copie de travail), relancer E4 et observer à partir de quand la DFR devient mesurable.
 - Lire la section *Security Considerations* du brouillon X-Wing (`vectors/xwing/`).
