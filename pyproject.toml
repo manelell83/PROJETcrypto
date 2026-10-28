@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canary-qday"
+version = "0.1.0"
+description = "Study of ML-KEM (FIPS 203) with a canary/SOC lab for detecting decrypt-and-use of toy-parameter traffic"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# Runtime dependencies are pinned in requirements.lock (see docs/versions.md).
+dependencies = [
+  "cryptography>=46",
+  "fastapi",
+  "uvicorn",
+  "httpx",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy", "bandit", "pip-audit", "types-PyYAML"]
+exp = ["pandas", "matplotlib"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["experiments/results", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "S", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S311", "N802", "N806"]
+"experiments/**" = ["S101", "S311"]
+"lab/**" = ["S311"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+mypy_path = "src"
+packages = ["canary_qday"]
+
+[[tool.mypy.overrides]]
+module = ["fpylll.*", "matplotlib.*", "pandas.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+  "kat: official ACVP known-answer tests",
+  "slow: long-running tests",
+  "integration: needs the docker compose lab",
+  "fuzz: fuzz-style robustness tests",
+]
+
+[tool.coverage.run]
+source = ["canary_qday"]
+branch = true
