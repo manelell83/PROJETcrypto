@@ -89,13 +89,15 @@ PROJEThanin/
 python tools/run.py test
 ```
 
-**Résultat attendu** (exécution de référence du 2026-10-28) : `64 passed, 1 warning`, en ≈ 30 s. L'avertissement provient de FastAPI/Starlette (`StarletteDeprecationWarning` sur `httpx`) et non du projet. Le test `tests/e2e/test_simulated_scenario.py` démarre de vrais processus locaux sur les ports 8281, 8288, 8290 et 9643 (décalage de 200).
+**Résultat attendu** (exécution de référence du 2026-10-28) : `90 passed, 1 warning`, en ≈ 45 s. L'avertissement provient de FastAPI/Starlette (`StarletteDeprecationWarning` sur `httpx`) et non du projet. Le test `tests/e2e/test_simulated_scenario.py` démarre de vrais processus locaux sur les ports 8281, 8288, 8290 et 9643 (décalage de 200).
 
 | Dossier | Ce qui est testé |
 |---|---|
 | `tests/unit/test_response_policy.py` | matrice de politique RED/ORANGE/GREEN, jeton non fiable, `--auto-lab` |
 | `tests/unit/test_response_engine.py` | exposition (vérité terrain synthétique), rotation, idempotence, dry-run octet pour octet, limitation de débit, approbations |
 | `tests/unit/test_siem_and_services.py` | pièges, registre sans secret en clair, canary (réponses identiques), services backend, oracle (jamais GREEN), SIEM mock (règle, signature, HTTP) |
+| `tests/unit/test_proxy_inprocess.py` | proxy et vrai générateur dans le même processus : flux RED/ORANGE/GREEN, profil interdit, clé révoquée, rechargement de la politique, IP bloquée, service arrêté, trames malformées |
+| `tests/unit/test_config_and_factories.py` | configuration par variables d'environnement, secrets par fichier, fabriques des services (`app_from_env`) et leurs cas d'erreur |
 | `tests/security/test_webhook.py` | HMAC, fraîcheur, rejeu, schéma strict, taille, limitation de débit, jeton admin, mode « secret dans l'URL » |
 | `tests/security/test_guard_and_redaction.py` | garde-fous, masquage des journaux, sink HEC (pas de jeton affiché, tampon disque), fichiers secrets |
 | `tests/e2e/test_simulated_scenario.py` | scénario complet (21 vérifications) et absence de `FAKE-` dans les journaux, événements et rapports |
@@ -116,7 +118,9 @@ python tools/run.py lint
 
 **Attendu :** `All checks passed!` (ruff) puis `Success: no issues found in 51 source files` (mypy `--strict` sur `src/`).
 
-> Le cœur cryptographique est vérifié par les vecteurs officiels (partie 1) et par le scénario de bout en bout. Les tests unitaires dédiés (NTT, codecs, trames altérées) ne font **pas** partie de cette livraison (voir `docs/test-results.md`).
+> Le cœur cryptographique est vérifié par les vecteurs officiels (partie 1), par le scénario de bout en bout et, indirectement, par les tests du proxy. Les tests unitaires dédiés (NTT, codecs, trames altérées) ne font **pas** partie de cette livraison (voir `docs/test-results.md`).
+
+Couverture mesurée : `.venv/Scripts/python -m pytest tests --cov=canary_qday --cov-precision=2` donne **88,23 %** au total lors de l'exécution de référence.
 
 ---
 
@@ -442,12 +446,12 @@ Le webhook natif de Splunk ne permet pas d'ajouter un en-tête de signature (seu
 | Élément | Statut lors de l'exécution de référence (2026-10-28) |
 |---|---|
 | Vecteurs ACVP (240) et X-Wing (3) | vérifiés : 243/243 |
-| Suite pytest (unitaires, sécurité, e2e) | 64 réussis, 1 avertissement tiers |
+| Suite pytest (unitaires, sécurité, e2e) | 90 réussis, 1 avertissement tiers |
 | Scénario simulé de bout en bout (SIEM mock) | vérifié : 21/21 |
 | Absence d'identifiants factices dans les journaux | vérifiée par le test e2e et par grep |
 | ruff, mypy `--strict` (`src/`), bandit | propres (constats bandit justifiés, voir `docs/test-results.md`) |
 | E4 : taux d'échec de déchiffrement | mesuré (voir partie 2.3 et `docs/calibration.md`) |
-| Couverture de code | 75 % au total : seuil de 80 % **non atteint** ; `response` ≈ 94 % |
+| Couverture de code | 88,23 % au total : seuil de 80 % atteint ; `response` ≈ 95 % ; `kem` (≈ 85 %) et `channel` (≈ 88 %) **sous** leur cible de 90 % |
 | Attaque réelle sur les profils jouets (M8, E3) | **non livrée** |
 | Calibrage par lattice-estimator | **non fait** (Docker indisponible) : paramètres provisoires |
 | Intégration avec un vrai Splunk | **non testée** ; adaptateur de webhook manquant |

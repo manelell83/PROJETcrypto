@@ -18,7 +18,7 @@ All checks below were re-run on a clean working tree after `c70f971`, on Windows
 |---|---|
 | ML-KEM-512/768/1024 (FIPS 203) | `python tools/run.py kat`: 243/243 vectors (240 NIST ACVP and 3 X-Wing draft-11); vector SHA-256 match `vectors/README.md` |
 | X-Wing hybrid | 3/3 draft-11 vectors (same command) |
-| Response engine, SIEM mock, canary, backend stubs, guard, redaction | `python tools/run.py test`: 64 passed (1 third-party deprecation warning) |
+| Response engine, SIEM mock, canary, backend stubs, guard, redaction | `python tools/run.py test`: 90 passed (1 third-party deprecation warning) |
 | Simulated attacker scenario (M9) | `python tools/run.py demo`: 21/21 checks; also covered by the e2e pytest |
 | E4 decryption-failure rate | two runs with fixed seeds (2000 and 5000 trials); see `docs/calibration.md`. Raw data under `experiments/results/e4/` are git-ignored, so they stay local; reproduce with `python tools/run.py exp e4 5000`. |
 | Code quality | ruff clean (`src lab tools tests experiments`); `mypy --strict` clean on `src`; bandit: no open finding (justified annotations) |
@@ -36,7 +36,7 @@ All checks below were re-run on a clean working tree after `c70f971`, on Windows
 
 | Item | Status |
 |---|---|
-| Coverage threshold | measured 75 % total, below the 80 % target (`response` ≈ 94 %; `kem` and `channel` below 90 % in pytest) |
+| Per-package coverage | total 88.23 % meets the 80 % target; `kem` (≈ 85 %) and `channel` (≈ 88 %) remain below their 90 % target (`response` ≈ 95 % meets it) |
 | Real Splunk integration | not done (no live instance; payload adapter missing) |
 | M8 attacker module and E3 | not delivered; the demo attacker is simulated (`docs/m8-status.md`) |
 | lattice-estimator | not run (Docker unavailable on the delivery machine) |
@@ -70,7 +70,7 @@ All checks below were re-run on a clean working tree after `c70f971`, on Windows
 | SEC-007 rate limiting | Verified (pytest) | burst → one rotation; endpoint returns 429 |
 | NFR-001 reproducible from a clean clone | Partial | local Python path documented and exercised; Docker path not available |
 | NFR-002 type and lint clean | Verified | ruff clean on `src lab tools tests experiments`; `mypy --strict` clean on `src` (lab, tools and tests are not type-checked) |
-| NFR-003 coverage | **Not met** | 75 % total; `response` ≈ 94 %; `kem` and `channel` below 90 % in pytest |
+| NFR-003 coverage | Partial | total 88.23 % (≥ 80 %: met); `response` ≈ 95 % (met); `kem` ≈ 85 % and `channel` ≈ 88 % (statements; < 90 %: not met) |
 | NFR-004 deterministic experiments | Verified for E4 | fixed seeds; failure counts are reproducible by construction |
 | NFR-005 latency measured (E6) | Not done | |
 | EXP-001…007 | Partial | E4 implemented and run; E1 covered informally by `check-vectors`; E2, E3, E5, E6 and E7 not done |
