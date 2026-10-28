@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import random
 import time
 import uuid
@@ -20,6 +21,7 @@ from canary_qday.common.errors import CanaryError, PolicyError
 from canary_qday.common.logging import get_logger, log_event
 from canary_qday.common.store import Store
 from canary_qday.services.backend_stub import SERVICES
+from canary_qday.traffic import lab_oracle
 from canary_qday.traffic.registry import register_stream
 
 _log = get_logger("generator")
@@ -77,6 +79,12 @@ async def run_stream(
             resp = await _exchange(reader, writer, session.seal(json.dumps(payload).encode()))
             codes.append(int(json.loads(session.open(resp))["status"]))
         store.end_stream(issued.stream_id, time.time())
+        if lab_oracle.enabled():
+            lab_oracle.record(
+                settings.data_dir, stream_id=issued.stream_id, profile=prof,
+                key_id=kid.hex(), trap_url=issued.trap_url, service=services[0],
+                credential=issued.credentials[f"{services[0]}.api_key"],
+            )
         log_event(_log, "stream done", stream_id=issued.stream_id, profile=prof,
                   key_id=kid.hex(), codes=codes)
         return StreamResult(issued.stream_id, prof, kid.hex(), codes)
@@ -101,7 +109,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--profile", choices=["RED", "ORANGE", "GREEN"], default="RED")
     ap.add_argument("--streams", type=int, default=1)
+    ap.add_argument("--lab-sim", action="store_true",
+                    help="record lab-oracle files for the SIMULATED attacker scenario")
     args = ap.parse_args()
+    if args.lab_sim:
+        os.environ["CQ_LAB_SIM"] = "1"
     res = asyncio.run(run_many(args.profile, args.streams, Settings.from_env()))
     print(json.dumps([r.__dict__ for r in res], indent=2))
 

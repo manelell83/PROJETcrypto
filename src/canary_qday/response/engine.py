@@ -56,7 +56,8 @@ class ResponseEngine:
         key = f"{incident_id}:{kind}"
         if kind in RATE_LIMITED:
             covered = self.state.rate_check(
-                f"{kind}:{ctx.params_id}", ctx.now, RATE_WINDOW_S, incident_id
+                f"{kind}:{ctx.params_id}:{'dry' if ctx.dry_run else 'apply'}",
+                ctx.now, RATE_WINDOW_S, incident_id,
             )
             if covered is not None and covered != incident_id:
                 self.state.record_action(key, incident_id, kind, mode, "rate_limited",

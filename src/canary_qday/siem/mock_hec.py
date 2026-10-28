@@ -7,7 +7,7 @@ It is NOT Splunk. It reproduces the contract we rely on:
   * a webhook to the response engine, signed with HmacHeader
     (the real Splunk webhook cannot sign, see docs/decisions.md).
 
-Run: uvicorn canary_qday.siem.mock_hec:app --port 8088
+Run: uvicorn --factory canary_qday.siem.mock_hec:app_from_env --port 8088
 """
 
 from __future__ import annotations
@@ -140,7 +140,8 @@ def create_app(siem: MockSiem) -> FastAPI:
     return app
 
 
-def _from_env() -> FastAPI:
+def app_from_env() -> FastAPI:
+    """Factory used by uvicorn --factory (reads secrets from CQ_*_FILE or env)."""
     siem = MockSiem(
         hec_token=env_secret("CQ_HEC_TOKEN", "CQ_HEC_TOKEN_FILE"),
         webhook_url=os.environ.get("CQ_WEBHOOK_URL", "http://127.0.0.1:8090/v1/alerts"),
@@ -148,10 +149,3 @@ def _from_env() -> FastAPI:
         store_path=Path(os.environ.get("CQ_DATA_DIR", "var")) / "siem" / "events.jsonl",
     )
     return create_app(siem)
-
-
-def __getattr__(name: str) -> Any:
-    # Lazy `app` so importing this module in tests needs no secrets in the environment.
-    if name == "app":
-        return _from_env()
-    raise AttributeError(name)
