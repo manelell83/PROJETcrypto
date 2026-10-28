@@ -8,6 +8,43 @@ Legend:
 
 Evidence details: `docs/test-results.md`.
 
+## Delivery summary (reference commit `c70f971`, branch `feat/M9-simulated-scenario`)
+
+All checks below were re-run on a clean working tree after `c70f971`, on Windows 11 with Python 3.13.4 and without Docker.
+
+**Delivered and verified**
+
+| Item | Evidence |
+|---|---|
+| ML-KEM-512/768/1024 (FIPS 203) | `python tools/run.py kat`: 243/243 vectors (240 NIST ACVP and 3 X-Wing draft-11); vector SHA-256 match `vectors/README.md` |
+| X-Wing hybrid | 3/3 draft-11 vectors (same command) |
+| Response engine, SIEM mock, canary, backend stubs, guard, redaction | `python tools/run.py test`: 64 passed (1 third-party deprecation warning) |
+| Simulated attacker scenario (M9) | `python tools/run.py demo`: 21/21 checks; also covered by the e2e pytest |
+| E4 decryption-failure rate | two runs with fixed seeds (2000 and 5000 trials); see `docs/calibration.md`. Raw data under `experiments/results/e4/` are git-ignored, so they stay local; reproduce with `python tools/run.py exp e4 5000`. |
+| Code quality | ruff clean (`src lab tools tests experiments`); `mypy --strict` clean on `src`; bandit: no open finding (justified annotations) |
+
+**Delivered but not tested under real conditions**
+
+| Item | Gap |
+|---|---|
+| Splunk HEC sink | unit-tested only against an unreachable endpoint (buffering, no token shown) |
+| `siem/splunk/props.conf`, `savedsearches.conf` | never loaded into Splunk; the native webhook payload needs an adapter that is not implemented |
+| `SharedSecretPath` webhook mode | unit-tested with the project's `Alert` schema, not with a real Splunk webhook |
+| Secret-file permission check (0600) | skipped on Windows; only the POSIX path is meaningful |
+
+**Deferred / out of the current scope**
+
+| Item | Status |
+|---|---|
+| Coverage threshold | measured 75 % total, below the 80 % target (`response` ≈ 94 %; `kem` and `channel` below 90 % in pytest) |
+| Real Splunk integration | not done (no live instance; payload adapter missing) |
+| M8 attacker module and E3 | not delivered; the demo attacker is simulated (`docs/m8-status.md`) |
+| lattice-estimator | not run (Docker unavailable on the delivery machine) |
+| SageMath calibration of the toy parameters | not done; RED/ORANGE remain provisional (`docs/calibration.md`) |
+| Also not done | dedicated crypto-core pytest tests, 1000-run interop vs liboqs (FR-002), fuzzing, pip-audit, gitleaks, CI workflow, Python 3.12 run, experiments E2/E3/E5–E7 |
+
+## Requirement by requirement
+
 | ID | Status | Evidence / gap |
 |---|---|---|
 | FR-001 ML-KEM per FIPS 203 | Verified (script) | `tools/check_vectors.py`: 240/240 ACVP cases. Sizes printed in the guide (part 1.3). |
