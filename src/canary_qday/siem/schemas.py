@@ -78,13 +78,34 @@ class Alert(_Strict):
     event: TrapEvent
 
 
+class AccessAlert(_Strict):
+    """Alert for an observable unauthorized-access attempt (handshake-based).
+
+    Separate from Alert/TrapEvent so the trap path is never affected. Carries a
+    HandshakeEvent (public fields only: profile, key_id, src_ip, outcome, reason).
+    """
+
+    alert_id: str = Field(min_length=8, max_length=64)
+    ts: str = Field(max_length=40)
+    rule: str = Field(max_length=64)
+    severity: Literal["low", "medium", "high", "critical"]
+    event: HandshakeEvent
+
+
 def to_json(model: BaseModel) -> str:
     """UTF-8 JSON with sorted keys (spec 5: serialization)."""
     return json.dumps(model.model_dump(), sort_keys=True, separators=(",", ":"))
 
 
 def parse_alert(raw: bytes | str | dict[str, Any]) -> Alert:
-    """Validate an alert body; raises pydantic.ValidationError on any deviation."""
+    """Validate a trap alert body; raises pydantic.ValidationError on any deviation."""
     if isinstance(raw, dict):
         return Alert.model_validate(raw)
     return Alert.model_validate_json(raw)
+
+
+def parse_access_alert(raw: bytes | str | dict[str, Any]) -> AccessAlert:
+    """Validate an access alert body; raises pydantic.ValidationError on any deviation."""
+    if isinstance(raw, dict):
+        return AccessAlert.model_validate(raw)
+    return AccessAlert.model_validate_json(raw)

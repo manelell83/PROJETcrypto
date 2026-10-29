@@ -31,7 +31,7 @@ from canary_qday.response.auth import (
     check_alert_ts,
 )
 from canary_qday.response.engine import EngineConfig, ResponseEngine
-from canary_qday.siem.schemas import parse_alert
+from canary_qday.siem.schemas import parse_access_alert, parse_alert
 
 MAX_BODY = 64 * 1024
 STATUS = {"E_SIG_INVALID": 401, "E_STALE": 400, "E_REPLAY": 409, "E_SCHEMA": 422,
@@ -74,10 +74,17 @@ def create_app(
     *,
     path_mode: bool = False,
     rate: RateLimiter | None = None,
+    access_rate: RateLimiter | None = None,
 ) -> FastAPI:
-    """Build the API around an engine and one authenticator."""
+    """Build the API around an engine and one authenticator.
+
+    The access route (/v1/alerts/access) reuses the SAME authenticator (so HMAC,
+    freshness and replay protection apply identically) but a SEPARATE rate limiter,
+    so a flood of access alerts cannot starve trap alerts or vice versa.
+    """
     app = FastAPI(title="canary-qday response engine")
     limiter = rate or RateLimiter(30, 60.0)
+    access_limiter = access_rate or RateLimiter(30, 60.0)
 
     async def _alert(request: Request, path_secret: str | None) -> JSONResponse:
         now = time.time()
@@ -101,11 +108,42 @@ def create_app(
         return JSONResponse({"incident_id": rep["incident_id"], "dry_run": rep["dry_run"],
                              "pending_approval": rep["pending_approval"]}, status_code=202)
 
+    async def _access(request: Request, path_secret: str | None) -> JSONResponse:
+        now = time.time()
+        body = await request.body()
+        if len(body) > MAX_BODY:
+            return _err("E_SCHEMA")
+        try:
+            authenticator.verify(dict(request.headers), body, path_secret, now)
+            alert = parse_access_alert(body)
+            check_alert_ts(alert.ts, now)
+        except CanaryError as e:
+            return _err(e.code)
+        except (ValidationError, ValueError):
+            return _err("E_SCHEMA")
+        if not access_limiter.allow(now):
+            return _err("E_RATE")
+        try:
+            rep = engine.handle_access(alert, now)
+        except CanaryError as e:
+            return _err(e.code)
+        return JSONResponse(
+            {"incident_id": rep["incident_id"], "classification": rep["classification"],
+             "dry_run": rep["dry_run"]}, status_code=202)
+
     if path_mode:
+        @app.post("/v1/alerts/access/{path_secret}")
+        async def access_path(path_secret: str, request: Request) -> JSONResponse:
+            return await _access(request, path_secret)
+
         @app.post("/v1/alerts/{path_secret}")
         async def alert_path(path_secret: str, request: Request) -> JSONResponse:
             return await _alert(request, path_secret)
     else:
+        @app.post("/v1/alerts/access")
+        async def access_hmac(request: Request) -> JSONResponse:
+            return await _access(request, None)
+
         @app.post("/v1/alerts")
         async def alert_hmac(request: Request) -> JSONResponse:
             return await _alert(request, None)

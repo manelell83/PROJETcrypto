@@ -147,7 +147,8 @@ def test_revoked_key_is_refused_and_logged(tmp_path: Path) -> None:
 
     _, sink = _with_proxy(tmp_path, body, pol)
     ev = _handshakes(sink)
-    assert [(e.outcome, e.reason) for e in ev] == [("refused", "E_POLICY")]
+    # A revoked key is reported precisely (D2), distinct from other policy refusals.
+    assert [(e.outcome, e.reason) for e in ev] == [("refused", "revoked_key")]
     assert ev[0].key_id == kid
 
 

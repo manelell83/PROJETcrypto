@@ -131,7 +131,10 @@ class Proxy:
                         info = hs.parse_hello(frame)
                         session = self.state.accept(frame)
                     except CanaryError as e:
-                        self._event(info, ip, "refused", e.code)
+                        # Distinguish reuse of a revoked key from other policy refusals,
+                        # so the SIEM can raise a precise access alert (key_id is public).
+                        revoked = info is not None and info.key_id in self.state.revoked
+                        self._event(info, ip, "refused", "revoked_key" if revoked else e.code)
                         raise
                     self._event(info, ip, "accepted")
                     continue

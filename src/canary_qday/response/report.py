@@ -78,6 +78,90 @@ def build(
     }
 
 
+def build_access(
+    *,
+    incident_id: str,
+    alert: dict[str, Any],
+    actions: list[dict[str, Any]],
+    created_at: float,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Assemble the access-attempt report (separate from the trap report).
+
+    No exposure, no rotation, no containment: an access incident only records the
+    observable handshake refusal. It detects an interaction with the proxy, never
+    an offline decryption.
+    """
+    ev = alert["event"]
+    return {
+        "incident_id": incident_id,
+        "created_at": _iso(created_at),
+        "dry_run": dry_run,
+        "alert_id": alert["alert_id"],
+        "classification": "unauthorized-access-attempt",
+        "rule": alert["rule"],
+        "severity": alert["severity"],
+        "profile": ev["profile"],
+        "key_id": ev["key_id"],
+        "epoch": ev["epoch"],
+        "trigger": {
+            "src_ip": ev["src_ip"],
+            "outcome": ev["outcome"],
+            "reason": ev["reason"],
+            "ts": ev["ts"],
+        },
+        "actions": [
+            {"kind": a["kind"], "mode": a["mode"], "status": a["status"], "detail": a["detail"]}
+            for a in actions
+        ],
+        "notes": [
+            "Detected an observable interaction with the proxy (refused handshake); "
+            "NOT an offline decryption, which is undetectable by design.",
+            "src_ip is the TCP peer address, not authenticated; behind a NAT or proxy "
+            "it is the hop's address and can be rotated to evade the burst rule.",
+            "Access response is create_incident + report only: no rotation, revocation, "
+            "profile switch or containment.",
+        ],
+    }
+
+
+def to_markdown_access(r: dict[str, Any]) -> str:
+    """Human-readable rendering of an access report."""
+    lines = [
+        f"# Access incident {r['incident_id']}",
+        "",
+        f"- Created: {r['created_at']}"
+        + ("  **(DRY-RUN: nothing was changed)**" if r["dry_run"] else ""),
+        f"- Classification: {r['classification']}",
+        f"- Rule / severity: {r['rule']} / {r['severity']}",
+        f"- Profile / key: {r['profile']} / {r['key_id']} (epoch {r['epoch']})",
+        f"- Trigger: {r['trigger']['outcome']} ({r['trigger']['reason']}) "
+        f"from {r['trigger']['src_ip']} at {r['trigger']['ts']}",
+        "",
+        "## Actions",
+        "",
+        "| Action | Mode | Status |",
+        "|---|---|---|",
+        *[f"| {a['kind']} | {a['mode']} | {a['status']} |" for a in r["actions"]],
+        "",
+        "## Notes",
+        "",
+        *[f"- {x}" for x in r["notes"]],
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write_access(reports_dir: Path, r: dict[str, Any]) -> tuple[Path, Path]:
+    """Write an access incident's <id>.json and <id>.md."""
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    jp = reports_dir / f"{r['incident_id']}.json"
+    mp = reports_dir / f"{r['incident_id']}.md"
+    jp.write_text(json.dumps(r, sort_keys=True, indent=2), encoding="utf-8")
+    mp.write_text(to_markdown_access(r), encoding="utf-8")
+    return jp, mp
+
+
 def to_markdown(r: dict[str, Any]) -> str:
     """Human-readable rendering of the report."""
     lines = [

@@ -15,7 +15,7 @@ from canary_qday.response import actions as act
 from canary_qday.response import exposure as exp
 from canary_qday.response import policy, report
 from canary_qday.response.state import ResponseState
-from canary_qday.siem.schemas import Alert
+from canary_qday.siem.schemas import AccessAlert, Alert
 
 RATE_WINDOW_S = 300.0  # at most one containment run per params_id per window (SEC-007)
 RATE_LIMITED = frozenset({"switch_profile", "rotate_secrets", "notify_analyst"})
@@ -153,6 +153,42 @@ class ResponseEngine:
         rep["alert"] = alert.model_dump()
         report.write(self.cfg.reports_dir, rep)
         self.state.set_report(incident_id, "awaiting-approval" if pending else "contained", rep)
+        return rep
+
+    def handle_access(self, alert: AccessAlert, now: float | None = None) -> dict[str, Any]:
+        """Process one access alert. Strictly separate from the trap path.
+
+        Only opens an incident (in the response DB) and writes a report. It never
+        reads the registry, computes exposure, rotates secrets, revokes keys,
+        switches profiles or runs any containment action -- regardless of
+        cfg.apply. Raises ReplayError for a duplicate alert_id.
+        """
+        now = time.time() if now is None else now
+        ev = alert.event
+        incident_id = str(uuid.uuid4())
+        if not self.state.create_incident(
+            incident_id, alert.alert_id, now, ev.profile, not self.cfg.apply
+        ):
+            raise ReplayError("alert already processed")
+        self.state.record_action(
+            f"{incident_id}:create_incident", incident_id, "create_incident", "auto", "done",
+            {"rule": alert.rule, "src_ip": ev.src_ip, "reason": ev.reason}, now,
+        )
+        actions = self.state.actions(incident_id)
+        rep = report.build_access(
+            incident_id=incident_id,
+            alert=alert.model_dump(),
+            actions=actions,
+            created_at=now,
+            dry_run=not self.cfg.apply,
+        )
+        rep["alert"] = alert.model_dump()
+        report.write_access(self.cfg.reports_dir, rep)
+        self.state.set_report(incident_id, "reported", rep)
+        log_event(
+            _log, "access-incident", incident_id=incident_id, profile=ev.profile,
+            rule=alert.rule, classification=rep["classification"], dry_run=not self.cfg.apply,
+        )
         return rep
 
     def approve(

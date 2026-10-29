@@ -35,6 +35,7 @@ All checks below were re-run on a clean working tree after `c70f971`, on Windows
 **Delivered since the first summary**
 
 - LLL-based lab attacker (`lab/attacker/`): integer LLL, Kannan embedding with verified `solve_lwe`, lab capture relay, hostile-input extractor, full recovery chain and CLI (`run.py attack`, `python -m lab.attacker`). Proven on solvable instances; honest `key-not-recovered: BKZ required` on real RED/ORANGE. See `docs/m8-status.md`.
+- Unauthorized-access detection: the SIEM raises a signed alert on reuse of a **revoked key** (`unauthorized_key_use`, high) and on a **burst of refused handshakes** from one src_ip (`refused_handshake_burst`, medium, provisional N=5/T=30 s). Delivered via `POST /v1/alerts/access` to a response path that only opens an incident and writes a report (dry-run; no rotation/revocation/switch/containment). Detects observable **interactions**, not offline decryption (spec §12.1). Splunk rules in `siem/splunk/savedsearches.conf` are **untested** against a live instance.
 
 **Deferred / out of the current scope**
 
