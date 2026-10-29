@@ -503,6 +503,22 @@ Le détail par exigence est dans `docs/status.md` ; les résultats bruts sont da
 
 ---
 
+## Attaquant réel (optionnel, honnête)
+
+Un attaquant **réel** basé sur LLL existe dans `lab/attacker/` (incréments M8). Il capture le trafic, extrait l'instance publique, réduit le réseau et, sur une instance résoluble, retrouve le secret, déchiffre et déclenche le piège. Sur les vrais profils RED/ORANGE, il s'arrête honnêtement sur `key-not-recovered: BKZ required` (LLL seul n'atteint pas la dimension 129/257 ; le BKZ est différé). L'oracle de la partie 5 reste le comportement par défaut.
+
+```bash
+python tools/run.py attack
+```
+
+Le scénario peut aussi l'exécuter en étape informative, sans changer ses 21 vérifications :
+
+```bash
+python -m lab.scenario.simulated_attacker --real-attack
+```
+
+Détails et limites : `docs/m8-status.md`.
+
 ## Pour aller plus loin (hors TP)
 
 - Comparer le coût de ML-KEM-512/768/1024 dans l'implémentation Python et dans `cryptography` (expérience E2 : pas encore implémentée).

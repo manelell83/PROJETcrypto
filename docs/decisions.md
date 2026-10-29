@@ -50,3 +50,13 @@ See `docs/versions.md`. Only installed versions are recorded there; nothing is p
 | `make` targets | `tools/run.py` provides them; the `Makefile` wraps it | `make` is not installed on the target Windows machines. |
 | Policy "switch to stronger profile" | Disables the broken profile **and every weaker profile**, revokes the key, bumps the epoch | A break of ORANGE implies RED is no safer. |
 | Rate limiting (SEC-007) | One containment run per (action, params_id, dry/apply) per 300 s, plus 30 alerts/min at the endpoint | Dry-run and apply are separated so that a dry-run does not suppress a later real response. |
+
+## M8 lab attacker (increments 1–5)
+
+| Topic | Decision | Why |
+|---|---|---|
+| Reduction engine | **Integer LLL only** (exact rational Gram-Schmidt); no BKZ | `fpylll`/`fplll` need Docker/a build chain unavailable here; a "progressive" loop without an SVP oracle would not be a real BKZ. Documented deviation from spec §6. |
+| Capture transport | **Lab TCP relay** that records frames, not `tcpdump`/`scapy` + pcap | Same captured content (public ek/ct, encrypted DATA), no external tooling. Deviation from spec §6. |
+| `lab/attacker` imports | May import `channel` (framing, key schedule), not only `kem.params/profiles` | Decrypting DATA needs the real transcript and AEAD; duplicating `channel` would risk silent drift. Deviation from spec §8, agreed with the owner. |
+| Dimension budget | `recover_secret` refuses any embedding dimension > `DEFAULT_MAX_DIM` (40) and returns `key-not-recovered: BKZ required` without running LLL | LLL's approximation factor is exponential; RED (129) and ORANGE (257) are out of reach. Honest, fast failure instead of a doomed run. |
+| Real attack vs oracle | The real attacker is a **separate** entry point (`run.py attack`, `--real-attack`); the M9 oracle stays the default | The detection/response chain must stay demonstrable even where a real break is infeasible. FR-013 remains **not met**. |

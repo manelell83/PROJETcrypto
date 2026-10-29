@@ -2,7 +2,7 @@
 
 Usage: python tools/run.py <target> [args]
 Targets mirror the Makefile contract of IMPLEMENTATION_SPEC.md section 13:
-  setup lint test kat check-vectors lab-up lab-down gen demo scenario exp audit
+  setup lint test kat check-vectors lab-up lab-down gen demo scenario exp attack audit
 The lab always lives in var/demo (same directory as the demo scenario).
 Targets that are not implemented yet say so and exit with code 2.
 """
@@ -113,6 +113,39 @@ def exp() -> int:
     return _run(_py(), "-m", "experiments.runners.e4_dfr", *args[1:])
 
 
+def attack() -> int:
+    """Real lab attacker on RED: run.py attack [--keep]. LLL only; reports honestly."""
+    import json as _json
+    from dataclasses import asdict
+
+    from tools import lab
+
+    data = LAB_DIR.resolve()
+    ports = lab.Ports()
+    keep = "--keep" in sys.argv
+    os.environ["CQ_LAB"] = "1"
+    lab.up(data, ports, apply=False)
+    try:
+        from canary_qday.common.config import Settings
+        from lab.attacker.live import capture_and_attack
+
+        settings = Settings(
+            data_dir=data, secrets_dir=data / "secrets", registry_db=data / "registry.db",
+            response_db=data / "response.db", policy_file=data / "policy.json",
+            reports_dir=data / "reports", canary_base_url=f"http://127.0.0.1:{ports.canary}",
+            proxy_host="127.0.0.1", proxy_port=ports.proxy, siem_sink="hec",
+            hec_url=f"http://127.0.0.1:{ports.hec}", response_url=f"http://127.0.0.1:{ports.response}",
+        )
+        result, cap = capture_and_attack(settings, data / "attacker-capture.jsonl", "RED")
+        print("REAL ATTACK (lab, toy profiles) - LLL only, no cryptanalysis of ML-KEM/X-Wing")
+        print(_json.dumps(asdict(result), indent=2))
+        print(f"capture: {cap}")
+    finally:
+        if not keep:
+            lab.down(data)
+    return 0
+
+
 def audit() -> int:
     """bandit + pip-audit."""
     return _run(_py(), "-m", "bandit", "-q", "-r", "src") or _run(_py(), "-m", "pip_audit")
@@ -130,6 +163,7 @@ TARGETS = {
     "demo": scenario,
     "scenario": scenario,
     "exp": exp,
+    "attack": attack,
     "audit": audit,
 }
 

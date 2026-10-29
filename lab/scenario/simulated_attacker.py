@@ -144,8 +144,16 @@ def _load_oracle(data_dir: Path, stream_id: str) -> dict[str, Any]:
     return dict(rec)
 
 
-def run(data_dir: Path, ports: lab.Ports, *, keep: bool = False) -> Summary:
-    """Run the whole scenario on a fresh data directory."""
+def run(
+    data_dir: Path, ports: lab.Ports, *, keep: bool = False, real_attack: bool = False
+) -> Summary:
+    """Run the whole scenario on a fresh data directory.
+
+    With ``real_attack`` set, an extra informative step R runs the REAL LLL-based
+    attacker on a freshly captured RED stream. It does not replace the lab oracle
+    and does not change the 21 default checks; its single check only verifies that
+    the real attack honestly reports ``key-not-recovered`` (BKZ required).
+    """
     import os
 
     sm = Summary()
@@ -170,6 +178,23 @@ def run(data_dir: Path, ports: lab.Ports, *, keep: bool = False) -> Summary:
             "all generated requests accepted (HTTP 200 from backends)",
             all(c == 200 for v in streams.values() for r in v for c in r.responses),
         )
+
+        # -- R. optional REAL attacker attempt (informative; RED still allowed) ---
+        if real_attack:
+            from lab.attacker.live import capture_and_attack
+
+            result, _ = capture_and_attack(s, data_dir / "attacker-capture.jsonl", "RED")
+            sm.step(
+                "R",
+                "REAL attacker attempt (LLL only) - informative, not part of the M9 chain",
+                status=result.status,
+                detail=result.detail,
+            )
+            sm.check(
+                "real attack honestly reports key-not-recovered (BKZ required)",
+                result.status == "key-not-recovered" and "BKZ" in result.detail,
+                detail=result.detail,
+            )
 
         # -- 1. passive observation -------------------------------------------
         time.sleep(0.5)
@@ -366,6 +391,16 @@ if __name__ == "__main__":
     ap.add_argument("--data-dir", default="var/demo")
     ap.add_argument("--port-offset", type=int, default=0)
     ap.add_argument("--keep", action="store_true", help="leave the lab running afterwards")
+    ap.add_argument(
+        "--real-attack",
+        action="store_true",
+        help="also run the real LLL attacker (informative; reports key-not-recovered on RED)",
+    )
     a = ap.parse_args()
-    result = run(Path(a.data_dir).resolve(), lab.Ports.offset(a.port_offset), keep=a.keep)
+    result = run(
+        Path(a.data_dir).resolve(),
+        lab.Ports.offset(a.port_offset),
+        keep=a.keep,
+        real_attack=a.real_attack,
+    )
     sys.exit(0 if result.ok else 1)

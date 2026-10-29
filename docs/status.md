@@ -32,13 +32,17 @@ All checks below were re-run on a clean working tree after `c70f971`, on Windows
 | `SharedSecretPath` webhook mode | unit-tested with the project's `Alert` schema, not with a real Splunk webhook |
 | Secret-file permission check (0600) | skipped on Windows; only the POSIX path is meaningful |
 
+**Delivered since the first summary**
+
+- LLL-based lab attacker (`lab/attacker/`): integer LLL, Kannan embedding with verified `solve_lwe`, lab capture relay, hostile-input extractor, full recovery chain and CLI (`run.py attack`, `python -m lab.attacker`). Proven on solvable instances; honest `key-not-recovered: BKZ required` on real RED/ORANGE. See `docs/m8-status.md`.
+
 **Deferred / out of the current scope**
 
 | Item | Status |
 |---|---|
 | Per-package coverage | total 88.23 % meets the 80 % target; `kem` (≈ 85 %) and `channel` (≈ 88 %) remain below their 90 % target (`response` ≈ 95 % meets it) |
 | Real Splunk integration | not done (no live instance; payload adapter missing) |
-| M8 attacker module and E3 | not delivered; the demo attacker is simulated (`docs/m8-status.md`) |
+| M8 full break (RED/ORANGE key recovery) and E3 | not demonstrated; the LLL attacker is delivered but cannot reach dim 129/257 — BKZ deferred (`docs/m8-status.md`) |
 | lattice-estimator | not run (Docker unavailable on the delivery machine) |
 | SageMath calibration of the toy parameters | not done; RED/ORANGE remain provisional (`docs/calibration.md`) |
 | Also not done | dedicated crypto-core pytest tests, 1000-run interop vs liboqs (FR-002), fuzzing, pip-audit, gitleaks, CI workflow, Python 3.12 run, experiments E2/E3/E5–E7 |
@@ -59,11 +63,11 @@ All checks below were re-run on a clean working tree after `c70f971`, on Windows
 | FR-010 exposure | Verified (pytest) | key-level and algorithmic sets equal the synthetic ground truth; expired secrets skipped |
 | FR-011 rotation | Verified (pytest + e2e) | rotated secrets refused afterwards (401); rotation idempotent |
 | FR-012 report | Verified (pytest + e2e) | JSON and Markdown with profile, window, exposed streams, actions, Irrecoverable and Neutralised sections |
-| FR-013 attacker recovers toy keys | **Not met** | M8 not delivered (`docs/m8-status.md`); the demo attacker is simulated |
+| FR-013 attacker recovers toy keys | **Not met** | LLL attacker delivered and tested (recovers tiny instances; decrypts real captured RED traffic given the key), but it does not break real RED/ORANGE — the ≥ 90 % bar needs BKZ (`docs/m8-status.md`) |
 | FR-014 one-command demo | Verified | `python tools/run.py demo` (21/21) and the e2e pytest |
 | SEC-001 webhook auth and replay | Verified (pytest + e2e) | HMAC and path-secret modes; forged → 401, stale → 400, replay → 409 |
 | SEC-002 dry-run without side effects | Verified (pytest + e2e) | SHA-256 of registry and policy unchanged |
-| SEC-003 attacker guard | Verified (pytest) | lab env, toy profiles only, lab hosts only |
+| SEC-003 attacker guard | Verified (pytest) | lab env, toy profiles only, lab hosts only; runs before every socket (capture, trap trigger) |
 | SEC-004 no secrets in repo or logs | Partial | redaction tests and an e2e log scan pass; gitleaks not run |
 | SEC-005 input validation and fuzz | Partial | schema, length and size checks tested at the webhook and HEC endpoints; no fuzz campaign (1e5 inputs) |
 | SEC-006 key files 0600 | Partial | enforced and tested on POSIX; skipped on Windows (documented) |

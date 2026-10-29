@@ -88,7 +88,7 @@ class Relay:
 
     async def start(
         self, host: str, port: int
-    ) -> tuple[asyncio.AbstractServer, CaptureWriter]:
+    ) -> tuple[asyncio.Server, CaptureWriter]:
         """Guard, then open the capture file and start listening on (host, port)."""
         require_lab(self.profile, self.proxy_host)  # before any socket is opened
         cap = CaptureWriter(self.capture_path)

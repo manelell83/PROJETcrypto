@@ -50,6 +50,7 @@ The demo starts the lab on `127.0.0.1` (ports 8081, 8088, 8090, 9443), runs the 
 | `python tools/run.py lab-up [--apply]` / `lab-down` | start or stop the local lab services |
 | `python tools/run.py gen RED 2 [--lab-sim]` | generate streams in the running lab |
 | `python tools/run.py exp e4 [trials]` | E4: decryption-failure rate of the toy candidates |
+| `python tools/run.py attack [--keep]` | real LLL lab attacker on RED (honest `key-not-recovered: BKZ required`) |
 | `python tools/run.py audit` | bandit and pip-audit (pip-audit needs network access) |
 
 The step-by-step lab guide (in French) is in [docs/guide/TP-canary-qday.md](docs/guide/TP-canary-qday.md).
